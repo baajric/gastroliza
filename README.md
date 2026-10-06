@@ -107,7 +107,7 @@ Tests:
 dotnet test
 ```
 
-Tests that need a local POS database are skipped automatically when it isn't available.
+All 63 tests pass. Tests that need a local POS database are skipped automatically when it isn't available.
 
 ## Roadmap
 
