@@ -1,0 +1,70 @@
+@using Analitika.Server.Servisi
+@implements IDisposable
+@inject StanjeAplikacije Stanje
+
+@*
+    Jedan red filtera iznad svega što obuhvata — nikad filter unutar sekcije sa grafom.
+    Bez okvira: linija ispod dovoljno odvaja alatnu traku od sadržaja.
+*@
+<div class="filteri">
+
+    <Segment T="Preset" Stavke="Presetovi" Vrijednost="Stanje.Izabrani"
+             VrijednostChanged="IzabranPreset" Naziv="@StanjeAplikacije.Naziv"
+             Opis="Vremenski period" />
+
+    <MudSpacer />
+
+    @* Birač datuma je stvarna kontrola, pa okvir ovdje nosi značenje — za razliku od
+       okvira oko blokova sadržaja. *@
+    <MudDateRangePicker DateRange="_raspon" DateRangeChanged="RasponPromijenjen"
+                        Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-0"
+                        Style="max-width: 260px;" DateFormat="dd.MM.yyyy."
+                        PlaceholderStart="Od" PlaceholderEnd="Do" />
+</div>
+
+@code {
+    private static readonly IReadOnlyList<Preset> Presetovi =
+    [
+        Preset.Danas, Preset.SedamDana, Preset.TridesetDana,
+        Preset.OvajMjesec, Preset.ProsliMjesec, Preset.GodinaUnazad
+    ];
+
+    private DateRange _raspon = new();
+
+    protected override void OnInitialized()
+    {
+        Osvjezi();
+        Stanje.Promjena += Osvjezi;
+    }
+
+    private void Osvjezi()
+    {
+        _raspon = new DateRange(
+            Stanje.Od.ToDateTime(TimeOnly.MinValue),
+            Stanje.Do.ToDateTime(TimeOnly.MinValue));
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Kad se stanje promijeni, komponente se ponovo iscrtaju i same javljaju "promjenu"
+    // sa vrijednošću koju su upravo dobile. Bez ove provjere nastaje petlja u kojoj
+    // period skače sam od sebe i svaki krug povlači nove upite na kasu.
+
+    private void IzabranPreset(Preset p)
+    {
+        if (p == Stanje.Izabrani) return;
+        Stanje.PostaviPreset(p);
+    }
+
+    private void RasponPromijenjen(DateRange? raspon)
+    {
+        if (raspon?.Start is null || raspon.End is null) return;
+
+        var od = DateOnly.FromDateTime(raspon.Start.Value);
+        var doDatuma = DateOnly.FromDateTime(raspon.End.Value);
+        if (od == Stanje.Od && doDatuma == Stanje.Do) return;
+
+        Stanje.PostaviRaspon(od, doDatuma);
+    }
+
+    public void Dispose() => Stanje.Promjena -= Osvjezi;
+}

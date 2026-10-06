@@ -1,0 +1,65 @@
+@*
+    Jedna ćelija u traci pokazatelja. Kad ima OnClick, ćelija je dugme koje bira
+    šta graf ispod prikazuje — izabrana dobija crtu ispod (Vercel Analytics).
+*@
+
+@if (OnClick.HasDelegate)
+{
+    <button type="button" class="plocica" aria-pressed="@(Izabrano ? "true" : "false")" @onclick="OnClick">
+        @Sadrzaj
+    </button>
+}
+else
+{
+    <div class="plocica">@Sadrzaj</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Naslov { get; set; } = "";
+    [Parameter, EditorRequired] public string Vrijednost { get; set; } = "";
+    [Parameter] public string? Jedinica { get; set; }
+
+    /// <summary>Kratko pojašnjenje ispod vrijednosti; izostaje kad nema šta dodati.</summary>
+    [Parameter] public string? Podnaslov { get; set; }
+
+    /// <summary>Postotna promjena; null kad poređenje nema smisla ili nema podataka.</summary>
+    [Parameter] public decimal? Promjena { get; set; }
+
+    /// <summary>Period sa kojim se poredi, ispisan. Bez njega postotak visi u zraku.</summary>
+    [Parameter] public string? Poredjenje { get; set; }
+
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Izabrano { get; set; }
+
+    private RenderFragment Sadrzaj => __builder =>
+    {
+        <span class="plocica-oznaka">@Naslov</span>
+
+        <div>
+            <span class="plocica-vrijednost">@Vrijednost</span>
+            @if (!string.IsNullOrEmpty(Jedinica))
+            {
+                @* Nelomivi razmak — brojka i jedinica ne smiju završiti u dva reda. *@
+                <span class="plocica-jedinica">&nbsp;@Jedinica</span>
+            }
+        </div>
+
+        @if (Promjena is { } p)
+        {
+            <div class="plocica-red">
+                <span class="znacka @(p > 0 ? "rast" : p < 0 ? "pad" : "neutralno")">
+                    <span aria-hidden="true">@(p > 0 ? "↑" : p < 0 ? "↓" : "→")</span>@p.ToString("+0.0;-0.0;0.0")%
+                </span>
+                @if (!string.IsNullOrEmpty(Poredjenje))
+                {
+                    <span class="plocica-poredjenje">naspram @Poredjenje</span>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Podnaslov))
+        {
+            <span class="plocica-nota">@Podnaslov</span>
+        }
+    };
+}

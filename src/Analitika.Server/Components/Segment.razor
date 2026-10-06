@@ -1,0 +1,36 @@
+@typeparam T
+@*
+    Segmentirani prekidač: izabrano polje je svijetla pilula na tamnoj traci.
+    Potez preuzet iz vizuelne reference.
+
+    Pravi <button> sa aria-pressed, ne div sa klikom — tastatura i čitač ekrana
+    tako rade bez dodatnog koda.
+*@
+
+<div class="segment" role="group" aria-label="@Opis">
+    @foreach (var stavka in Stavke)
+    {
+        var izabrano = EqualityComparer<T>.Default.Equals(stavka, Vrijednost);
+        <button type="button"
+                class="segment-dugme"
+                aria-pressed="@(izabrano ? "true" : "false")"
+                @onclick="@(() => Izaberi(stavka))">
+            @Naziv(stavka)
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<T> Stavke { get; set; } = [];
+    [Parameter, EditorRequired] public T? Vrijednost { get; set; }
+    [Parameter] public EventCallback<T> VrijednostChanged { get; set; }
+    [Parameter, EditorRequired] public Func<T, string> Naziv { get; set; } = x => x?.ToString() ?? "";
+    [Parameter] public string? Opis { get; set; }
+
+    private async Task Izaberi(T stavka)
+    {
+        // Ponovni klik na već izabrano ne pokreće dohvat podataka.
+        if (EqualityComparer<T>.Default.Equals(stavka, Vrijednost)) return;
+        await VrijednostChanged.InvokeAsync(stavka);
+    }
+}

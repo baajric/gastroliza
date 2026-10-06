@@ -1,0 +1,580 @@
+@page "/postavke"
+@using System.Text
+@using Analitika.Server.Mostovi
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+@inject PostavkeRestorana PostavkeRestorana
+@inject ISnackbar Poruke
+@inject IDialogService Dijalozi
+
+<PageTitle>Postavke</PageTitle>
+
+<NaslovStranice Naslov="Postavke" Opis="Restoran, imena konobara i podaci prošlih godina." />
+
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="false" />
+
+@if (_postavke is not null)
+{
+    <MudGrid Spacing="4">
+        @* ---------------- Restoran ---------------- *@
+        <MudItem xs="12" lg="5">
+            <section class="panel">
+                <div class="panel-zaglavlje">
+                    <div>
+                        <h2 class="displej naslov-panela">Restoran</h2>
+                        <div class="opis">Logo i ime gore desno, u zaglavlju</div>
+                    </div>
+                </div>
+                <div class="panel-tijelo">
+                    <div class="logo-uredjivac mb-5">
+                        <span class="restoran-krug">
+                            @if (!string.IsNullOrEmpty(_logo))
+                            {
+                                <img src="@_logo" alt="Logo restorana" />
+                            }
+                            else
+                            {
+                                <span class="inicijali">@PostavkeRestorana.Inicijali(ImeZaPrikaz)</span>
+                            }
+                        </span>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-size-small" style="padding:0 14px; display:inline-flex; align-items:center; cursor:pointer;">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Upload" Size="Size.Small" Class="mr-2" />
+                                    @(_logo is null ? "Dodaj logo" : "Promijeni logo")
+                                    <InputFile OnChange="LogoIzabran" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none;" />
+                                </label>
+                                @if (_logo is not null)
+                                {
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => _logo = null)">Ukloni</MudButton>
+                                }
+                            </div>
+                            <span class="opis" style="font-size:12px;">PNG, JPG ili SVG. Smanjuje se na 256 × 256 i prikazuje u krugu.</span>
+                        </div>
+                    </div>
+
+                    <label class="polje-oznaka" for="ime-restorana">Ime restorana</label>
+                    <MudTextField T="string" @bind-Value="_naziv" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  InputId="ime-restorana" Placeholder="@Stanje.Restoran?.Naziv" MaxLength="60" Immediate />
+
+                    <div class="d-flex justify-end mt-5">
+                        <MudButton Variant="Variant.Filled" OnClick="SnimiRestoran" Disabled="_snima || !RestoranPromijenjen">
+                            Snimi
+                        </MudButton>
+                    </div>
+                </div>
+            </section>
+        </MudItem>
+
+        @* ---------------- Konobari ---------------- *@
+        <MudItem xs="12" lg="7">
+            <section class="panel">
+                <div class="panel-zaglavlje">
+                    <div>
+                        <h2 class="displej naslov-panela">Konobari</h2>
+                        <div class="opis">Ime za prikaz u izvještajima. Kasa ostaje netaknuta.</div>
+                    </div>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Filled" OnClick="SnimiKonobare" Disabled="_snima || !KonobariPromijenjeni">
+                        Snimi imena
+                    </MudButton>
+                </div>
+                @if (_konobari.Count == 0)
+                {
+                    <div class="prazno"><span>U kasi nema kartica konobara.</span></div>
+                }
+                else
+                {
+                    <div class="tabela-okvir" style="max-height:440px; overflow:auto;">
+                        <MudSimpleTable Dense>
+                            <thead>
+                                <tr><th style="width:140px;">Kartica</th><th>Ime u kasi</th><th style="width:45%;">Prikazno ime</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var k in _konobari)
+                                {
+                                    <tr>
+                                        <td class="mono" style="color:var(--tekst-3);">@k.IdKartice</td>
+                                        <td>@k.ImeUKasi</td>
+                                        <td style="padding-top:4px !important; padding-bottom:4px !important;">
+                                            <MudTextField T="string" Value="@_imena.GetValueOrDefault(k.IdKartice)"
+                                                          ValueChanged="@(v => _imena[k.IdKartice] = v ?? "")"
+                                                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate
+                                                          Placeholder="@k.ImeUKasi" MaxLength="40" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </div>
+                }
+            </section>
+        </MudItem>
+
+        @* ---------------- Godine podataka ---------------- *@
+        <MudItem xs="12">
+            <section class="panel">
+                <div class="panel-zaglavlje">
+                    <div>
+                        <h2 class="displej naslov-panela">Podaci po godinama</h2>
+                        <div class="opis">Svaka godina koju kasa ima čita se automatski i zaključana je. Fajl se uvozi samo za prošle godine kojih u kasi nema.</div>
+                    </div>
+                    <MudSpacer />
+                    <a href="predlozak-prodaje.csv" download class="mud-button-root mud-button mud-button-text" style="padding:0 10px; display:inline-flex; align-items:center; text-decoration:none;">
+                        <MudIcon Icon="@Icons.Material.Outlined.Download" Size="Size.Small" Class="mr-2" /> Predložak fajla
+                    </a>
+                </div>
+
+                @foreach (var g in _godine)
+                {
+                    <div class="godina-red">
+                        <div class="godina-broj">@g.Godina</div>
+                        <div style="min-width:0;">
+                            <span class="izvor">
+                                <span class="izvor-tacka @KlasaIzvora(g.Izvor)"></span>@NazivIzvora(g)
+                                @if (g.Izvor is IzvorGodine.Uzivo or IzvorGodine.BazaUKasi)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Outlined.Lock" Style="font-size:14px; color:var(--tekst-3);" title="Čita se iz kase — uvoz fajla je zaključan" />
+                                }
+                            </span>
+                            <div class="godina-opis">@OpisGodine(g)</div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap justify-end">
+                            @if (g.Izvor is IzvorGodine.Nema or IzvorGodine.Uvezeno)
+                            {
+                                <MudButton Variant="@(g.Izvor == IzvorGodine.Nema ? Variant.Outlined : Variant.Text)" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Outlined.UploadFile"
+                                           OnClick="@(() => OtvoriUvoz(g.Godina))" Disabled="_uvozi">
+                                    @(g.Izvor == IzvorGodine.Nema ? "Uvezi fajl" : "Zamijeni")
+                                </MudButton>
+                            }
+                            @if (g.Izvor == IzvorGodine.Uvezeno || g.ImaIUvoz)
+                            {
+                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => ObrisiGodinu(g.Godina))" Disabled="_uvozi">
+                                    Obriši uvoz
+                                </MudButton>
+                            }
+                        </div>
+                    </div>
+
+                    @if (_uvozGodina == g.Godina)
+                    {
+                        <div style="padding:0 16px 16px;">
+                            <div class="uvoz-okvir">
+                                @if (_procitano is null)
+                                {
+                                    <div class="d-flex align-center gap-3 flex-wrap">
+                                        <label class="mud-button-root mud-button mud-button-filled" style="padding:0 16px; display:inline-flex; align-items:center; cursor:pointer;">
+                                            <MudIcon Icon="@Icons.Material.Outlined.FileOpen" Size="Size.Small" Class="mr-2" /> Izaberi fajl za @g.Godina.
+                                            <InputFile OnChange="FajlIzabran" accept=".csv,.txt,text/csv" style="display:none;" />
+                                        </label>
+                                        <span class="opis">CSV iz Excela ili iz kase: jedna prodajna stavka po redu, sa zaglavljem. Stupci kao u predlošku.</span>
+                                        <MudSpacer />
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ZatvoriUvoz">Odustani</MudButton>
+                                    </div>
+                                    @if (_cita)
+                                    {
+                                        <MudProgressLinear Indeterminate Color="Color.Primary" Class="mt-3" />
+                                    }
+                                }
+                                else if (_procitano.Kobna is { } kobna)
+                                {
+                                    <div class="obavijest greska" style="margin-bottom:12px;">
+                                        <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" Style="color:var(--pad);" />
+                                        <span>@kobna</span>
+                                    </div>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => _procitano = null)">Izaberi drugi fajl</MudButton>
+                                }
+                                else
+                                {
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@Icons.Material.Outlined.Description" Size="Size.Small" />
+                                        <span style="font-weight:500;">@_nazivFajla</span>
+                                        <span class="opis mono">@VelicinaFajla</span>
+                                    </div>
+
+                                    <div class="uvoz-statistika">
+                                        <div><div class="opis">Stavki</div><div class="vr">@_procitano.Ispravnih.ToString("N0")</div></div>
+                                        <div><div class="opis">Računa</div><div class="vr">@_procitano.Racuni.Count.ToString("N0")</div></div>
+                                        <div><div class="opis">Promet</div><div class="vr">@_procitano.Promet.ToString("N0") KM</div></div>
+                                        <div><div class="opis">Period</div><div class="vr mono" style="font-size:13px;">@($"{_procitano.PrviDatum:dd.MM.} – {_procitano.ZadnjiDatum:dd.MM.yyyy.}")</div></div>
+                                        <div><div class="opis">Artikala</div><div class="vr">@_procitano.Artikli.Count.ToString("N0")</div></div>
+                                        <div><div class="opis">Konobara</div><div class="vr">@_procitano.Konobari.Count.ToString("N0")</div></div>
+                                    </div>
+
+                                    @if (_procitano.Neispravnih > 0)
+                                    {
+                                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense Class="mb-3">
+                                            @Broj(_procitano.Neispravnih, "red se ne može pročitati i neće biti uvezen", "reda se ne mogu pročitati i neće biti uvezena", "redova se ne može pročitati i neće biti uvezeno").
+                                            <ul style="margin:6px 0 0 18px; font-size:12px;">
+                                                @foreach (var gr in _procitano.Greske)
+                                                {
+                                                    <li>@gr</li>
+                                                }
+                                            </ul>
+                                        </MudAlert>
+                                    }
+
+                                    @if (g.Izvor == IzvorGodine.Uvezeno)
+                                    {
+                                        <div class="opis mb-3">Postojeći uvoz za @g.Godina. će biti zamijenjen ovim fajlom.</div>
+                                    }
+
+                                    @if (_uvozi)
+                                    {
+                                        <MudProgressLinear Value="@_napredak" Color="Color.Primary" Class="mb-2" />
+                                        <div class="opis mono">Šaljem u kasu: @_poslano.ToString("N0") / @_procitano.Ispravnih.ToString("N0") stavki</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex gap-2 justify-end flex-wrap">
+                                            <MudButton Variant="Variant.Text" OnClick="ZatvoriUvoz">Odustani</MudButton>
+                                            <MudButton Variant="Variant.Filled" OnClick="Uvezi" Disabled="_procitano.Ispravnih == 0">
+                                                Uvezi @Broj(_procitano.Ispravnih, "stavku", "stavke", "stavki")
+                                            </MudButton>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </section>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    /// <summary>Najveći fajl prodaje koji se prima — godina velikog restorana je ispod 100 MB.</summary>
+    private const long NajvecaVelicina = 300L * 1024 * 1024;
+
+    /// <summary>Stavke idu mostu u paketima — jedna SignalR poruka ostaje ispod pola megabajta.</summary>
+    private const int VelicinaPaketa = 2000;
+
+    private Postavke? _postavke;
+    private string? _naziv;
+    private string? _logo;
+    private List<KonobarKase> _konobari = [];
+    private Dictionary<string, string> _imena = [];
+    private List<GodinaPodataka> _godine = [];
+
+    private bool _ucitava;
+    private bool _snima;
+    private string? _greska;
+
+    // Uvoz
+    private int? _uvozGodina;
+    private byte[]? _sadrzaj;
+    private Encoding _kodiranje = Encoding.UTF8;
+    private string? _nazivFajla;
+    private IzvjestajCitanja? _procitano;
+    private bool _cita;
+    private bool _uvozi;
+    private int _poslano;
+    private double _napredak;
+    private readonly CancellationTokenSource _otkaz = new();
+
+    private Guid Restoran => Stanje.Restoran!.Id;
+
+    private string ImeZaPrikaz => string.IsNullOrWhiteSpace(_naziv) ? Stanje.Restoran?.Naziv ?? "" : _naziv!;
+
+    private bool RestoranPromijenjen =>
+        (_naziv ?? "") != (_postavke?.NazivRestorana ?? "") || _logo != _postavke?.Logo;
+
+    private bool KonobariPromijenjeni => !OcistiImena().OrderBy(x => x.Key)
+        .SequenceEqual((_postavke?.ImenaKonobara ?? []).OrderBy(x => x.Key));
+
+    private string VelicinaFajla => _sadrzaj is null ? "" : $"{_sadrzaj.Length / 1024d / 1024d:N1} MB";
+
+    static PostavkeStranica() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    protected override async Task OnInitializedAsync() => await UcitajAsync();
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi — postavke se čuvaju u kasi, pa se mogu mijenjati tek kad je most spojen.";
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        try
+        {
+            _postavke = await PostavkeRestorana.UcitajAsync(Restoran, iznova: true, _otkaz.Token);
+            _naziv = _postavke.NazivRestorana;
+            _logo = _postavke.Logo;
+            _imena = new Dictionary<string, string>(_postavke.ImenaKonobara);
+            _konobari = await Podaci.KonobariKaseAsync(_otkaz.Token);
+            _godine = await Podaci.GodineAsync(_otkaz.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Restoran
+    // ------------------------------------------------------------------
+
+    private async Task LogoIzabran(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            // Browser sam smanji sliku prije slanja — na server stiže mali PNG, ne fotografija od 5 MB.
+            var malena = await e.File.RequestImageFileAsync("image/png", 256, 256);
+            await using var tok = malena.OpenReadStream(2 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await tok.CopyToAsync(ms);
+            _logo = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            Poruke.Add($"Slika se ne može pročitati: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SnimiRestoran()
+    {
+        await SnimiAsync(_postavke! with
+        {
+            NazivRestorana = string.IsNullOrWhiteSpace(_naziv) ? null : _naziv.Trim(),
+            Logo = _logo
+        }, "Restoran je snimljen.");
+    }
+
+    // ------------------------------------------------------------------
+    // Konobari
+    // ------------------------------------------------------------------
+
+    /// <summary>Čuvaju se samo upisana imena koja se razlikuju od imena u kasi.</summary>
+    private Dictionary<string, string> OcistiImena() => _imena
+        .Where(x => !string.IsNullOrWhiteSpace(x.Value)
+                    && !x.Value.Trim().Equals(_konobari.FirstOrDefault(k => k.IdKartice == x.Key)?.ImeUKasi, StringComparison.Ordinal))
+        .ToDictionary(x => x.Key, x => x.Value.Trim());
+
+    private async Task SnimiKonobare() =>
+        await SnimiAsync(_postavke! with { ImenaKonobara = OcistiImena() }, "Imena konobara su snimljena.");
+
+    private async Task SnimiAsync(Postavke nove, string poruka)
+    {
+        _snima = true;
+        try
+        {
+            await PostavkeRestorana.SnimiAsync(Restoran, nove, _otkaz.Token);
+            _postavke = nove;
+            _imena = new Dictionary<string, string>(nove.ImenaKonobara);
+            Poruke.Add(poruka, Severity.Success);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Poruke.Add($"Snimanje nije uspjelo: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _snima = false;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Godine i uvoz
+    // ------------------------------------------------------------------
+
+    private static string KlasaIzvora(IzvorGodine i) => i switch
+    {
+        IzvorGodine.Uzivo => "uzivo",
+        IzvorGodine.BazaUKasi => "baza",
+        IzvorGodine.Uvezeno => "uvezeno",
+        _ => ""
+    };
+
+    private static string NazivIzvora(GodinaPodataka g) => g.Izvor switch
+    {
+        IzvorGodine.Uzivo => "Uživo iz kase",
+        IzvorGodine.BazaUKasi => "Kasa već ima ovu godinu — čita se automatski",
+        IzvorGodine.Uvezeno => "Uvezeno iz fajla",
+        _ => "Nema podataka"
+    };
+
+    private static string OpisGodine(GodinaPodataka g)
+    {
+        var dijelovi = new List<string>();
+        if (g.Baza is not null) dijelovi.Add(g.Baza);
+        if (g.NazivFajla is not null) dijelovi.Add(g.NazivFajla);
+        if (g.PrviDatum is { } p && g.ZadnjiDatum is { } z) dijelovi.Add($"{p:dd.MM.} – {z:dd.MM.yyyy.}");
+        if (g.BrojStavki > 0) dijelovi.Add(Broj(g.BrojStavki, "stavka", "stavke", "stavki"));
+        if (g.Uvezeno is { } u) dijelovi.Add($"uvezeno {u:dd.MM.yyyy.}");
+        if (g.ImaIUvoz) dijelovi.Add("postoji i uvoz, ali baza u kasi ima prednost");
+        if (g.Izvor == IzvorGodine.Nema) dijelovi.Add("Izvještaji za ovu godinu su prazni dok se ne uveze fajl.");
+        return string.Join(" · ", dijelovi);
+    }
+
+    private void OtvoriUvoz(int godina)
+    {
+        _uvozGodina = godina;
+        _procitano = null;
+        _sadrzaj = null;
+    }
+
+    private void ZatvoriUvoz()
+    {
+        _uvozGodina = null;
+        _procitano = null;
+        _sadrzaj = null;
+    }
+
+    /// <summary>
+    /// Fajl se čita u memoriju servera (ne na disk) i odmah provjerava, da korisnik prije
+    /// potvrde vidi šta će ući: broj stavki, promet i redove koji ne valjaju.
+    /// </summary>
+    private async Task FajlIzabran(InputFileChangeEventArgs e)
+    {
+        _cita = true;
+        StateHasChanged();
+        try
+        {
+            if (e.File.Size > NajvecaVelicina)
+            {
+                Poruke.Add("Fajl je veći od 300 MB.", Severity.Error);
+                return;
+            }
+
+            await using var tok = e.File.OpenReadStream(NajvecaVelicina, _otkaz.Token);
+            using var ms = new MemoryStream();
+            await tok.CopyToAsync(ms, _otkaz.Token);
+            _sadrzaj = ms.ToArray();
+            _nazivFajla = e.File.Name;
+            _kodiranje = PrepoznajKodiranje(_sadrzaj);
+
+            // Prvi prolaz samo broji i provjerava; stavke se šalju tek na potvrdu.
+            var izvjestaj = new IzvjestajCitanja();
+            await Task.Run(() =>
+            {
+                foreach (var _ in ArhivaCsv.Citaj(Citac(), izvjestaj, _uvozGodina)) { }
+            }, _otkaz.Token);
+            _procitano = izvjestaj;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Poruke.Add($"Fajl se ne može pročitati: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _cita = false;
+        }
+    }
+
+    /// <summary>
+    /// Excel na bosanskom Windowsu snima CSV u Windows-1250, a ne u UTF-8 — bez ovoga
+    /// bi „Ćevapi" stigli kao „?evapi". Strogi UTF-8 dekoder javi grešku na takvom fajlu.
+    /// </summary>
+    private static Encoding PrepoznajKodiranje(byte[] sadrzaj)
+    {
+        try
+        {
+            new UTF8Encoding(false, throwOnInvalidBytes: true).GetCharCount(sadrzaj);
+            return Encoding.UTF8;
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.GetEncoding(1250);
+        }
+    }
+
+    private StreamReader Citac() => new(new MemoryStream(_sadrzaj!), _kodiranje, detectEncodingFromByteOrderMarks: true);
+
+    private async Task Uvezi()
+    {
+        if (_uvozGodina is not { } godina || _sadrzaj is null || _procitano is null) return;
+
+        _uvozi = true;
+        _poslano = 0;
+        _napredak = 0;
+        Guid? uvozId = null;
+        try
+        {
+            uvozId = await Podaci.UvozPocniAsync(godina, _nazivFajla ?? "fajl.csv", _otkaz.Token);
+
+            var paket = new List<StavkaArhive>(VelicinaPaketa);
+            var ukupno = Math.Max(1, _procitano.Ispravnih);
+            foreach (var stavka in ArhivaCsv.Citaj(Citac(), new IzvjestajCitanja(), godina))
+            {
+                paket.Add(stavka);
+                if (paket.Count < VelicinaPaketa) continue;
+
+                _poslano += await Podaci.UvozDioAsync(uvozId.Value, paket, _otkaz.Token);
+                _napredak = 100.0 * _poslano / ukupno;
+                paket = new List<StavkaArhive>(VelicinaPaketa);
+                StateHasChanged();
+            }
+            if (paket.Count > 0) _poslano += await Podaci.UvozDioAsync(uvozId.Value, paket, _otkaz.Token);
+            _napredak = 100;
+            StateHasChanged();
+
+            var gotovo = await Podaci.UvozZavrsiAsync(uvozId.Value, _otkaz.Token);
+            Poruke.Add($"{gotovo.Godina}. je uvezena: {Broj(gotovo.BrojStavki, "stavka", "stavke", "stavki")}.", Severity.Success);
+            ZatvoriUvoz();
+            _godine = await Podaci.GodineAsync(_otkaz.Token);
+            _konobari = await Podaci.KonobariKaseAsync(_otkaz.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Poruke.Add($"Uvoz nije uspio, ništa nije promijenjeno: {ex.Message}", Severity.Error);
+            if (uvozId is { } id)
+            {
+                try { await Podaci.UvozOdustaniAsync(id); } catch { /* most počisti i sam pri sljedećem uvozu */ }
+            }
+        }
+        finally
+        {
+            _uvozi = false;
+        }
+    }
+
+    private async Task ObrisiGodinu(int godina)
+    {
+        var potvrda = await Dijalozi.ShowMessageBoxAsync(
+            $"Obrisati uvoz za {godina}.?",
+            "Uvezene stavke te godine se brišu iz lokalne baze. Kasa se ne dira, a fajl možeš uvesti ponovo.",
+            yesText: "Obriši", cancelText: "Odustani");
+        if (potvrda != true) return;
+
+        try
+        {
+            await Podaci.ObrisiGodinuAsync(godina, _otkaz.Token);
+            Poruke.Add($"Uvoz za {godina}. je obrisan.", Severity.Info);
+            _godine = await Podaci.GodineAsync(_otkaz.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Poruke.Add($"Brisanje nije uspjelo: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Bosanska množina: 1 stavka, 2–4 stavke, 5+ stavki (11–14 su uvijek „stavki").</summary>
+    private static string Broj(long n, string jedan, string dvaDoCetiri, string vise)
+    {
+        var desetica = n % 100;
+        var jedinica = n % 10;
+        var rijec = desetica is >= 11 and <= 14 ? vise
+            : jedinica == 1 ? jedan
+            : jedinica is >= 2 and <= 4 ? dvaDoCetiri
+            : vise;
+        return $"{n:N0} {rijec}";
+    }
+
+    public void Dispose()
+    {
+        _otkaz.Cancel();
+        _otkaz.Dispose();
+    }
+}

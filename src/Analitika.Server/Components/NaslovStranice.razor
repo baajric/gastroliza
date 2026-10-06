@@ -1,0 +1,27 @@
+@*
+    Zaglavlje stranice: kratak naslov, ispod njega period sitnim slovima.
+    Akcije stranice (izvoz, novi recept) stoje desno, poravnate uz dno naslova.
+*@
+
+<header class="stranica-zaglavlje">
+    <div style="min-width:0;">
+        <h1 class="displej naslov-stranice">@Naslov</h1>
+        @if (!string.IsNullOrEmpty(Opis))
+        {
+            @* Period (datumi) je monospace da se cifre poravnaju; rečenica ostaje u običnom pismu. *@
+            <div class="opis @(char.IsDigit(Opis[0]) ? "mono" : "")">@Opis</div>
+        }
+    </div>
+
+    @if (Radnje is not null)
+    {
+        <MudSpacer />
+        <div class="d-flex flex-wrap align-center gap-2">@Radnje</div>
+    }
+</header>
+
+@code {
+    [Parameter, EditorRequired] public string Naslov { get; set; } = "";
+    [Parameter] public string? Opis { get; set; }
+    [Parameter] public RenderFragment? Radnje { get; set; }
+}

@@ -1,0 +1,20 @@
+﻿Gastroliza Most
+===============
+
+Most je mali Windows servis koji povezuje bazu kase (SQL Server, EtisRpos)
+sa aplikacijom Gastroliza. Šalje samo zbirne rezultate, nikad cijelu bazu,
+i to izlaznom vezom — na ruteru ne treba ništa otvarati.
+
+Instalacija
+-----------
+1. Raspakuj ovaj zip na računaru gdje je SQL Server sa bazom kase.
+2. Dvoklik na Instaliraj.cmd i potvrdi administratorska prava.
+3. Instalaciju pokreni Windows nalogom kojim otvaraš SQL Server Management
+   Studio — on smije dati mostu pravo čitanja baze.
+
+Kod za uparivanje je već upisan u uparivanje.json i važi 30 minuta.
+Ako istekne, preuzmi most ponovo na stranici „Poveži kasu".
+
+Uklanjanje
+----------
+Dvoklik na Ukloni.cmd.

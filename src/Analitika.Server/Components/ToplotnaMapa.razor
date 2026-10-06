@@ -1,0 +1,80 @@
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@inject StanjeAplikacije Stanje
+
+@*
+    Kad je gužva: dan u sedmici × sat, jačina boje = prosječan promet po pojavljivanju
+    tog dana. Bez dijeljenja po broju dana duži period bi lažno izgledao jači.
+
+    Jedan ton, svjetlina nosi vrijednost. Višebojna skala bi izmislila kategorije
+    kojih u podatku nema.
+*@
+
+@if (Polja.Count == 0)
+{
+    <div style="color:var(--tekst-3); font-size:var(--tekst-body-sm);">Nema podataka za ovaj period.</div>
+}
+else
+{
+    <div class="guzva" style="@($"--guzva-sati:{Sati.Count};")">
+        @* Zaglavlje sa satima — svaki drugi, da se brojevi ne slijepe. *@
+        <div></div>
+        @foreach (var (sat, i) in Sati.Select((s, i) => (s, i)))
+        {
+            <div class="guzva-sat">@(i % 2 == 0 ? $"{sat}" : "")</div>
+        }
+
+        @foreach (var (dan, indeks) in Dani)
+        {
+            <div class="guzva-oznaka">@dan</div>
+            @foreach (var sat in Sati)
+            {
+                var vrijednost = Vrijednost(indeks, sat);
+                <div class="guzva-polje"
+                     style="@($"background:{Paleta.Guzva(Udio(vrijednost))};")"
+                     title="@($"{dan}, {sat}:00 — {vrijednost:N0} KM po danu")"></div>
+            }
+        }
+    </div>
+
+    <div class="d-flex align-center gap-2 mt-3">
+        <span class="guzva-oznaka">manje</span>
+        @foreach (var korak in new[] { 0.05m, 0.3m, 0.55m, 0.8m, 1m })
+        {
+            <span class="guzva-polje" style="@($"width:18px; height:10px; background:{Paleta.Guzva(korak)};")"></span>
+        }
+        <span class="guzva-oznaka">više</span>
+        <MudSpacer />
+        <span class="guzva-oznaka">najjače: @Vrhunac</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<PoljeGuzve> Polja { get; set; } = [];
+
+    private static readonly string[] ImenaDana = ["Pon", "Uto", "Sri", "Čet", "Pet", "Sub", "Ned"];
+
+    /// <summary>Prikazuju se samo sati u kojima se stvarno radi — prazne kolone ne nose ništa.</summary>
+    private List<int> Sati => Polja.Count == 0
+        ? []
+        : [.. Enumerable.Range(Polja.Min(p => p.Sat), Polja.Max(p => p.Sat) - Polja.Min(p => p.Sat) + 1)];
+
+    private List<(string Naziv, int Indeks)> Dani =>
+        [.. ImenaDana.Select((n, i) => (n, i)).Where(x => Polja.Any(p => p.Dan == x.i))];
+
+    private decimal Najvece => Polja.Count == 0 ? 0 : Polja.Max(p => p.PoDanu);
+
+    private decimal Vrijednost(int dan, int sat) =>
+        Polja.FirstOrDefault(p => p.Dan == dan && p.Sat == sat)?.PoDanu ?? 0;
+
+    private decimal Udio(decimal vrijednost) => Najvece == 0 ? 0 : vrijednost / Najvece;
+
+    private string Vrhunac
+    {
+        get
+        {
+            var p = Polja.MaxBy(x => x.PoDanu);
+            return p is null ? "—" : $"{ImenaDana[p.Dan]} {p.Sat}:00";
+        }
+    }
+}

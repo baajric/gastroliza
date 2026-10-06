@@ -1,0 +1,14 @@
+@inherits LayoutComponentBase
+
+@*
+    Ljuska za prijavu i registraciju: bez ladice i trake, samo logo i kartica na
+    sredini. Renderuje se statički — kolačić prijave se postavlja u HTTP odgovoru.
+*@
+
+<div class="nalog-okvir">
+    <div class="nalog-kolona">
+        <img src="img/logo.png" alt="Gastroliza" class="nalog-logo" />
+        @Body
+        <p class="nalog-dno">Analitika za restorane · podaci ostaju u tvojoj kasi</p>
+    </div>
+</div>

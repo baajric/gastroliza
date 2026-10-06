@@ -1,0 +1,367 @@
+@page "/"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@using ApexCharts
+@* Obje biblioteke imaju tipove Color i Size; u razmetu se koristi MudBlazor. *@
+@using Color = MudBlazor.Color
+@using Size = MudBlazor.Size
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+
+<PageTitle>Pregled</PageTitle>
+
+<NaslovStranice Naslov="Pregled"
+                Opis="@($"{Stanje.Od:dd.MM.yyyy.} – {Stanje.Do:dd.MM.yyyy.}")" />
+
+<PeriodIzbornik />
+
+@* Period bez ijednog računa nije „pad od 100%" — to je prazan period. *@
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="@(!ImaPrometa)" />
+
+@if (_sazetak is { BrojRacuna: > 0 })
+{
+    <div style="@(_ucitava ? "opacity:.5" : "")">
+        <div class="plocice">
+            @* Tri ćelije biraju mjeru na grafu ispod — Vercel Analytics potez. *@
+            <Kartica Naslov="Promet" Vrijednost="@_sazetak.Promet.ToString("N0")" Jedinica="KM"
+                     Izabrano="@(_mjera == Mjera.Promet)" OnClick="@(() => IzaberiMjeru(Mjera.Promet))"
+                     Promjena="@Promjena(_sazetak.Promet, _prethodni?.Promet)"
+                     Poredjenje="@Stanje.PrethodniOpis" />
+            <Kartica Naslov="Računa" Vrijednost="@_sazetak.BrojRacuna.ToString("N0")"
+                     Izabrano="@(_mjera == Mjera.Racuni)" OnClick="@(() => IzaberiMjeru(Mjera.Racuni))"
+                     Promjena="@Promjena(_sazetak.BrojRacuna, _prethodni?.BrojRacuna)"
+                     Poredjenje="@Stanje.PrethodniOpis" />
+            <Kartica Naslov="Prosječna korpa" Vrijednost="@_sazetak.ProsjecnaKorpa.ToString("N2")" Jedinica="KM"
+                     Izabrano="@(_mjera == Mjera.Korpa)" OnClick="@(() => IzaberiMjeru(Mjera.Korpa))"
+                     Promjena="@Promjena(_sazetak.ProsjecnaKorpa, _prethodni?.ProsjecnaKorpa)"
+                     Poredjenje="@Stanje.PrethodniOpis" />
+            <Kartica Naslov="Po radnom danu" Vrijednost="@_sazetak.PrometPoDanu.ToString("N0")" Jedinica="KM"
+                     Promjena="@Promjena(_sazetak.PrometPoDanu, _prethodni?.PrometPoDanu)"
+                     Poredjenje="@Stanje.PrethodniOpis"
+                     Podnaslov="@($"{_sazetak.RadnihDana} radnih dana, prije {_prethodni?.RadnihDana}")" />
+        </div>
+
+        <MudGrid Spacing="4">
+            <MudItem xs="12">
+                <GrafOkvir Naslov="@($"{NazivMjere} po danima")"
+                           Podnaslov="@(_poredi ? $"{Stanje.TekuciOpis} naspram {Stanje.PrethodniOpis}" : Stanje.TekuciOpis)">
+                    <Alat>
+                        @* Dvije serije, ista mjera i ista osa — poređenje sa prethodnim
+                           periodom, nikad druga mjera na drugoj skali. *@
+                        <button type="button" class="prekidac" aria-pressed="@(_poredi ? "true" : "false")"
+                                @onclick="@(() => PoredjenjePromijenjeno(!_poredi))">
+                            <span class="prekidac-linija" aria-hidden="true"></span>
+                            Prethodni period
+                        </button>
+                    </Alat>
+                    <Graf>
+                        @if (_dani.Count > 0)
+                        {
+                            @* Ključ sadrži i stanje poređenja: uključivanje druge serije mijenja
+                               opcije (legenda, isprekidana linija, boje poteza), a te se na već
+                               iscrtan graf ne primjenjuju — mora se stvoriti iznova. *@
+                            @* XAxisType se mora zadati na komponenti; kroz Options ga
+                               biblioteka pregazi brojčanom osom, a tada zajednički oblačić
+                               ne može spojiti dvije serije. *@
+                            <ApexChart TItem="TackaDana" Options="_opcijeDani" Height="300"
+                                       XAxisType="XAxisType.Category"
+                                       @ref="_grafDani" @key="@($"{_poredi}-{_mjera}")">
+                                @* Nazivi serija nose datume — u tooltipu se tada odmah vidi
+                                   koji broj pripada kojem periodu. *@
+                                @* Kod poređenja obje serije su linije — ispunjena površina bi
+                                   zaklonila donju liniju. Sama krivulja postaje površina. *@
+                                <ApexPointSeries TItem="TackaDana" Items="_serijaSada" Name="@Stanje.TekuciOpis"
+                                                 SeriesType="@(_poredi ? SeriesType.Line : SeriesType.Area)"
+                                                 XValue="@(d => d.Oznaka)" YValue="@(d => d.Vrijednost)" />
+                                @if (_poredi)
+                                {
+                                    <ApexPointSeries TItem="TackaDana" Items="_serijaPrije" Name="@Stanje.PrethodniOpis"
+                                                     SeriesType="SeriesType.Line"
+                                                     XValue="@(d => d.Oznaka)" YValue="@(d => d.Vrijednost)" />
+                                }
+                            </ApexChart>
+                        }
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped Style="max-height:300px; overflow:auto;">
+                            <thead><tr><th>Datum</th><th class="brojka">Promet (KM)</th><th class="brojka">Računa</th></tr></thead>
+                            <tbody>
+                                @foreach (var d in _dani)
+                                {
+                                    <tr>
+                                        <td>@d.Datum.ToString("dd.MM.yyyy.")</td>
+                                        <td class="brojka">@d.Promet.ToString("N2")</td>
+                                        <td class="brojka">@d.BrojRacuna.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12" lg="7">
+                <GrafOkvir Naslov="Promet po satima" Podnaslov="@($"Najjači sat: {NajjaciSat}")">
+                    <Graf>
+                        @if (_sati.Count > 0)
+                        {
+                            <ApexChart TItem="SatPrometa" Options="_opcijeSati" Height="260"
+                                       @ref="_grafSati">
+                                <ApexPointSeries TItem="SatPrometa" Items="_sati" Name="Promet"
+                                                 SeriesType="SeriesType.Bar"
+                                                 XValue="@(s => $"{s.Sat}h")"
+                                                 YValue="@(s => s.Promet)"
+                                                 PointColor="@(s => s.Sat == VrhunacSat ? Paleta.Serija1() : Paleta.Neistaknuto())" />
+                            </ApexChart>
+                        }
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped Style="max-height:300px; overflow:auto;">
+                            <thead><tr><th>Sat</th><th class="brojka">Promet (KM)</th><th class="brojka">Artikala</th></tr></thead>
+                            <tbody>
+                                @foreach (var s in _sati)
+                                {
+                                    <tr>
+                                        <td>@s.Sat:00</td>
+                                        <td class="brojka">@s.Promet.ToString("N2")</td>
+                                        <td class="brojka">@s.BrojArtikala.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12" lg="5">
+                <GrafOkvir Naslov="Piće i hrana" Podnaslov="Udio u prometu">
+                    <Graf>
+                        <UdioTraka Redovi="_grupe" />
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped>
+                            <thead><tr><th>Grupa</th><th class="brojka">Promet (KM)</th><th class="brojka">Udio</th></tr></thead>
+                            <tbody>
+                                @foreach (var g in _grupe)
+                                {
+                                    <tr>
+                                        <td>@g.Grupa</td>
+                                        <td class="brojka">@g.Promet.ToString("N2")</td>
+                                        <td class="brojka">@Udio(g).ToString("N1")%</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12">
+                <GrafOkvir Naslov="Kad je gužva" Podnaslov="Prosjek po danu u sedmici">
+                    <Graf>
+                        <ToplotnaMapa Polja="_guzva" />
+                    </Graf>
+                </GrafOkvir>
+            </MudItem>
+        </MudGrid>
+    </div>
+}
+
+@code {
+    /// <summary>Tačka na grafu poređenja: obje serije dijele redni broj dana, ne datum.</summary>
+    public sealed record TackaDana(string Oznaka, decimal Vrijednost);
+
+    private Sazetak? _sazetak;
+    private Sazetak? _prethodni;
+    private List<DanPrometa> _dani = [];
+    private List<DanPrometa> _daniPrije = [];
+    private List<SatPrometa> _sati = [];
+    private List<RedGrupe> _grupe = [];
+    private List<PoljeGuzve> _guzva = [];
+
+    private List<TackaDana> _serijaSada = [];
+    private List<TackaDana> _serijaPrije = [];
+
+    private enum Mjera { Promet, Racuni, Korpa }
+    private Mjera _mjera = Mjera.Promet;
+
+    private bool _poredi;
+    private bool _ucitava;
+    private string? _greska;
+
+    private ApexChartOptions<TackaDana> _opcijeDani = new();
+    private ApexChartOptions<SatPrometa> _opcijeSati = new();
+
+    private ApexChart<TackaDana>? _grafDani;
+    private ApexChart<SatPrometa>? _grafSati;
+    private bool _osvjeziGrafove;
+
+    private bool ImaPrometa => _sazetak is { BrojRacuna: > 0 };
+
+    private int VrhunacSat => _sati.Count == 0 ? -1 : _sati.MaxBy(s => s.Promet)!.Sat;
+    private string NajjaciSat => VrhunacSat < 0 ? "—" : $"{VrhunacSat}:00";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Stanje.Promjena += NaPromjenu;
+        PostaviOpcije();
+        await UcitajAsync();
+    }
+
+    private void NaPromjenu() => _ = InvokeAsync(async () =>
+    {
+        PostaviOpcije();
+        await UcitajAsync();
+    });
+
+    /// <summary>
+    /// ApexCharts ne primijeti sam da se lista promijenila — nova serija se mora
+    /// gurnuti u graf poslije iscrtavanja, inače ostane prikazan prethodni period.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_osvjeziGrafove) return;
+        _osvjeziGrafove = false;
+
+        if (_grafDani is not null)
+        {
+            // Promjena serije i promjena opcija su dvije različite naredbe: legenda,
+            // isprekidana linija i zajednički oblačić žive u opcijama, ne u seriji.
+            await _grafDani.UpdateOptionsAsync(true, false, false);
+            await _grafDani.UpdateSeriesAsync(true);
+        }
+
+        if (_grafSati is not null) await _grafSati.UpdateSeriesAsync(true);
+    }
+
+    private async Task PoredjenjePromijenjeno(bool ukljuceno)
+    {
+        _poredi = ukljuceno;
+
+        // Podaci prethodnog perioda se dohvaćaju tek kad zatrebaju.
+        if (_poredi && _daniPrije.Count == 0 && Podaci.NaVezi)
+        {
+            try { _daniPrije = await Podaci.PoDanimaPrethodniAsync(); }
+            catch (Exception ex) { _greska = ex.Message; }
+        }
+
+        // Legenda se pojavljuje tek sa drugom serijom, pa se opcije moraju ponovo složiti.
+        PostaviOpcije();
+        SloziSerije();
+        _osvjeziGrafove = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Obje serije se poravnavaju po rednom broju dana, ne po datumu — prethodni
+    /// period ima druge datume, pa bi po datumu bio nacrtan pored, a ne preko.
+    /// </summary>
+    /// <summary>
+    /// Oznaka dana na osi. Razmak između dana i mjeseca nije samo pravopis:
+    /// bez njega „18.07." biblioteci izgleda kao broj 18,07, pa osu proglasi
+    /// brojčanom — a tada zajednički oblačić ne može spojiti dvije serije.
+    /// </summary>
+    private static string OznakaDana(DateOnly d) => d.ToString("dd.") + " " + d.ToString("MM.");
+
+    private void SloziSerije()
+    {
+        _serijaSada = [.. _dani.Select(d => new TackaDana(OznakaDana(d.Datum), Vrijednost(d)))];
+
+        // Prethodni period često ima drugačiji broj radnih dana. Višak se odsijeca —
+        // dan koji nema par u tekućem periodu bi visio izvan ose i kvario poređenje.
+        _serijaPrije = [.. _daniPrije
+            .Take(_dani.Count)
+            .Select((d, i) => new TackaDana(OznakaDana(_dani[i].Datum), Vrijednost(d)))];
+    }
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            _sazetak = null;
+            StateHasChanged();
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        StateHasChanged();
+
+        try
+        {
+            // Redom, ne uporedo — most je jedna veza prema jednom računaru,
+            // pa bi paralelni upiti samo pravili red i opterećivali kasu.
+            _sazetak = await Podaci.SazetakAsync();
+            _prethodni = await Podaci.SazetakPrethodniAsync();
+            _dani = await Podaci.PoDanimaAsync();
+            _sati = await Podaci.PoSatimaAsync();
+            _grupe = await Podaci.PoGrupamaAsync();
+            _guzva = await Podaci.GuzvaAsync();
+
+            _daniPrije = _poredi ? await Podaci.PoDanimaPrethodniAsync() : [];
+            SloziSerije();
+            _osvjeziGrafove = true;
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+            StateHasChanged();
+        }
+    }
+
+    private string NazivMjere => _mjera switch
+    {
+        Mjera.Racuni => "Računi",
+        Mjera.Korpa => "Prosječna korpa",
+        _ => "Promet"
+    };
+
+    private decimal Vrijednost(DanPrometa d) => _mjera switch
+    {
+        Mjera.Racuni => d.BrojRacuna,
+        Mjera.Korpa => d.BrojRacuna == 0 ? 0 : Math.Round(d.Promet / d.BrojRacuna, 2),
+        _ => d.Promet
+    };
+
+    private void IzaberiMjeru(Mjera m)
+    {
+        if (m == _mjera) return;
+        _mjera = m;
+        SloziSerije();
+        _osvjeziGrafove = true;
+    }
+
+    private static decimal? Promjena(decimal sad, decimal? prije) =>
+        prije is null or 0 ? null : (sad - prije.Value) / prije.Value * 100m;
+
+    private decimal Udio(RedGrupe g)
+    {
+        var ukupno = _grupe.Sum(x => x.Promet);
+        return ukupno == 0 ? 0 : g.Promet / ukupno * 100m;
+    }
+
+    private void PostaviOpcije()
+    {
+        _opcijeDani = GrafStil.Linijski<TackaDana>(_poredi);
+
+        // Sa dvije serije legenda je obavezna — bez nje se ne zna koja linija je koji period.
+        // Sa jednom nema šta razlikovati, pa bi samo trošila prostor.
+        _opcijeDani.Legend = new ApexCharts.Legend
+        {
+            Show = _poredi,
+            Position = ApexCharts.LegendPosition.Top,
+            HorizontalAlign = ApexCharts.Align.Left,
+            Labels = new ApexCharts.LegendLabels { Colors = [Paleta.SekundarnoMastilo()] }
+        };
+
+        _opcijeSati = GrafStil.Stupci<SatPrometa>();
+    }
+
+    public void Dispose() => Stanje.Promjena -= NaPromjenu;
+}

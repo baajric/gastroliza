@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="bs">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="pisma.css?v=3" />
+    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    <link rel="stylesheet" href="app.css?v=3" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="RezimStranice" />
+</head>
+
+<body>
+    @* Aplikacija je interaktivna; samo prijava i registracija se renderuju statički,
+       jer se kolačić prijave mora postaviti u HTTP odgovoru, a ne preko SignalR-a. *@
+    <Routes @rendermode="RezimStranice" />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+</body>
+
+</html>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    private IComponentRenderMode? RezimStranice =>
+        HttpContext.Request.Path.StartsWithSegments("/nalog") ? null : InteractiveServer;
+}

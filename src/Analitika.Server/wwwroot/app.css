@@ -1,0 +1,1210 @@
+/*
+  Dizajn sistem — „servisni pult".
+
+  Glavna referenca je Vercel Analytics (Mobbin), uz pojedinosti iz Stripe,
+  Square i DoorDash Merchant pregleda prodaje. Sistem drže četiri poteza:
+
+    1. Crno platno, plohe jedan stepen svjetlije, tamni hairline rubovi.
+       Dubina se pravi plohom i rubom, nikad sjenom.
+    2. Pokazatelji su jedna traka ćelija, ne razbacane kartice — izabrana ćelija
+       ima crtu ispod i upravlja grafom ispod nje (Vercel).
+    3. Jedna boja podatka: plava je isključivo serija na grafu i fokus.
+       Prethodni period je siva isprekidana linija (Stripe „previous period").
+    4. Promjena je mala obojena značka sa tintanom podlogom, zelena ili crvena.
+       Boja nikad ne stoji sama — uvijek uz znak i strelicu.
+*/
+
+:root {
+    /* --- Plohe, odozdo prema gore --- */
+    --platno: #000000;
+    --ploha: #0a0a0a;
+    --ploha-2: #111111;
+    --ploha-3: #1a1a1a;
+
+    /* --- Rubovi --- */
+    --rub: #242424;
+    --rub-jak: #333333;
+
+    /* --- Mastilo --- */
+    --tekst-1: #ededed;
+    --tekst-2: #b4b4b4;
+    --tekst-3: #8f8f8f;
+    --tekst-4: #5f5f5f;
+
+    /* --- Podatak i stanje --- */
+    --plava: #3b8bff;          /* serija, fokus, link — ništa drugo */
+    --plava-tinta: rgba(59, 139, 255, .14);
+    --rast: #4ccf7d;
+    --rast-tinta: rgba(76, 207, 125, .13);
+    --pad: #ff6166;
+    --pad-tinta: rgba(255, 97, 102, .13);
+    --upozorenje: #f2a93b;
+    --upozorenje-tinta: rgba(242, 169, 59, .12);
+
+    /* --- Pismo --- */
+    --font-ui: Inter, ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+
+    --t-11: 11px;
+    --t-12: 12px;
+    --t-13: 13px;
+    --t-14: 14px;
+    --t-16: 16px;
+    --t-24: 24px;
+    --t-30: 30px;
+
+    /* --- Razmaci, osnova 4px --- */
+    --s4: 4px;
+    --s8: 8px;
+    --s12: 12px;
+    --s16: 16px;
+    --s20: 20px;
+    --s24: 24px;
+    --s32: 32px;
+
+    /* --- Radijusi --- */
+    --r-kartica: 12px;
+    --r-kontrola: 8px;
+    --r-mali: 6px;
+
+    /* Stari nazivi, da ugrađeni stilovi u stranicama ostanu ispravni. */
+    --rub-tanki: var(--rub);
+    --phosphor-mint: var(--rast);
+    --warm-warning: var(--pad);
+    --tekst-body: var(--t-14);
+    --tekst-body-sm: var(--t-13);
+
+    color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------
+   Osnova
+   --------------------------------------------------------------- */
+
+html, body {
+    margin: 0;
+    background: var(--platno);
+    font-family: var(--font-ui);
+    font-size: var(--t-14);
+    line-height: 1.5;
+    color: var(--tekst-1);
+    font-feature-settings: "cv11" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+}
+
+.app-okvir {
+    background: var(--platno);
+    color: var(--tekst-1);
+    min-height: 100vh;
+}
+
+* { touch-action: manipulation; }
+
+:focus-visible {
+    outline: 2px solid var(--plava);
+    outline-offset: 2px;
+}
+
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible { outline: none; }
+
+::selection { background: var(--plava-tinta); }
+
+/* ---------------------------------------------------------------
+   Tipografija
+   --------------------------------------------------------------- */
+
+.displej {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--tekst-1);
+    margin: 0;
+    text-wrap: balance;
+}
+
+.naslov-stranice { font-size: var(--t-24); letter-spacing: -0.025em; }
+.naslov-panela { font-size: var(--t-14); font-weight: 500; letter-spacing: -0.01em; }
+
+.opis {
+    font-size: var(--t-13);
+    color: var(--tekst-3);
+}
+
+.oznaka {
+    font-family: var(--font-mono);
+    font-size: var(--t-11);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--tekst-3);
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* ---------------------------------------------------------------
+   Zaglavlje stranice
+   --------------------------------------------------------------- */
+
+.stranica-zaglavlje {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--s12);
+    margin-bottom: var(--s20);
+}
+
+.stranica-zaglavlje .opis { margin-top: 4px; }
+
+/* ---------------------------------------------------------------
+   Kartica (panel)
+   --------------------------------------------------------------- */
+
+.panel {
+    background: var(--ploha);
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kartica);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.panel-zaglavlje {
+    display: flex;
+    align-items: center;
+    gap: var(--s8) var(--s12);
+    padding: var(--s12) var(--s16);
+    min-height: 52px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--rub);
+}
+
+.panel-zaglavlje .opis { font-size: var(--t-12); }
+
+.panel-tijelo { padding: var(--s16); }
+
+/* Tabele unutar panela idu do ruba, bez dodatnog uvlačenja. */
+.panel > .mud-table,
+.panel > .tabela-okvir,
+.panel-tijelo.bez-ruba { padding: 0; }
+
+.ugnijezdeno {
+    background: var(--ploha-2);
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kontrola);
+    padding: var(--s12);
+}
+
+/* ---------------------------------------------------------------
+   Traka pokazatelja — jedan okvir, ćelije razdvojene hairline crtom
+   --------------------------------------------------------------- */
+
+.plocice {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    background: var(--ploha);
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kartica);
+    overflow: hidden;
+    margin-bottom: var(--s16);
+}
+
+@media (min-width: 900px) {
+    .plocice { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 599px) {
+    .plocica { padding: var(--s12) var(--s12) var(--s16); }
+    .plocica-oznaka { font-size: var(--t-12); margin-bottom: 4px; }
+    .stranica-zaglavlje { margin-bottom: var(--s16); }
+}
+
+.plocica {
+    position: relative;
+    padding: var(--s16) var(--s20) var(--s20);
+    min-width: 0;
+    border-right: 1px solid var(--rub);
+    border-bottom: 1px solid var(--rub);
+    margin: 0 -1px -1px 0;
+    background: transparent;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+}
+
+/* Ćelija koja upravlja grafom je dugme. */
+button.plocica {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    border-top: 0;
+    border-left: 0;
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+
+button.plocica:hover { background: var(--ploha-2); }
+
+/* Izabrana ćelija: crta ispod u boji mastila — Vercel potez. */
+.plocica[aria-pressed="true"] { background: var(--ploha-2); }
+.plocica[aria-pressed="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 2px;
+    background: var(--tekst-1);
+}
+
+.plocica-oznaka {
+    display: block;
+    font-size: var(--t-13);
+    font-weight: 400;
+    color: var(--tekst-3);
+    margin-bottom: var(--s8);
+}
+
+.plocica-vrijednost {
+    font-size: clamp(22px, 5.6vw, var(--t-30));
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--tekst-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.plocica-jedinica {
+    font-size: var(--t-14);
+    font-weight: 400;
+    color: var(--tekst-3);
+    margin-left: 2px;
+}
+
+.plocica-red {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: var(--s8);
+}
+
+.plocica-nota,
+.plocica-poredjenje {
+    display: block;
+    font-size: var(--t-12);
+    color: var(--tekst-4);
+}
+
+.plocica-nota { margin-top: 6px; }
+
+/* ---------------------------------------------------------------
+   Značka promjene i pilula
+   --------------------------------------------------------------- */
+
+.znacka {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 6px;
+    border-radius: var(--r-mali);
+    font-family: var(--font-mono);
+    font-size: var(--t-12);
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.znacka.rast { color: var(--rast); background: var(--rast-tinta); }
+.znacka.pad { color: var(--pad); background: var(--pad-tinta); }
+.znacka.neutralno { color: var(--tekst-3); background: var(--ploha-3); }
+
+.pilula {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--rub);
+    background: var(--ploha);
+    font-size: var(--t-12);
+    font-weight: 500;
+    line-height: 1.3;
+    white-space: nowrap;
+    color: var(--tekst-2);
+}
+
+.tacka-veze {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--tekst-4);
+}
+
+.tacka-veze.na-vezi {
+    background: var(--rast);
+    box-shadow: 0 0 0 3px var(--rast-tinta);
+}
+
+/* ---------------------------------------------------------------
+   Segmentirani prekidač — kompaktan, pravougaon
+   --------------------------------------------------------------- */
+
+.segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-kontrola);
+    border: 1px solid var(--rub);
+    background: var(--ploha);
+    flex-wrap: wrap;
+}
+
+.segment-dugme {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--tekst-3);
+    font: inherit;
+    font-size: var(--t-13);
+    font-weight: 500;
+    line-height: 1;
+    padding: 0 12px;
+    height: 30px;
+    border-radius: var(--r-mali);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .12s ease, background-color .12s ease;
+}
+
+.segment-dugme:hover { color: var(--tekst-1); background: var(--ploha-2); }
+
+.segment-dugme[aria-pressed="true"] {
+    background: var(--ploha-3);
+    border-color: var(--rub-jak);
+    color: var(--tekst-1);
+}
+
+/* Prekidač poređenja: legenda i dugme u jednom — isprekidana crta je
+   upravo ono što će se pojaviti na grafu. */
+.prekidac {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-mali);
+    border: 1px solid var(--rub);
+    background: transparent;
+    color: var(--tekst-3);
+    font: inherit;
+    font-size: var(--t-12);
+    font-weight: 500;
+    cursor: pointer;
+    transition: color .12s ease, background-color .12s ease, border-color .12s ease;
+}
+
+.prekidac:hover { color: var(--tekst-1); border-color: var(--rub-jak); }
+
+.prekidac-linija {
+    width: 14px;
+    height: 0;
+    border-top: 2px dashed var(--tekst-4);
+}
+
+.prekidac[aria-pressed="true"] {
+    color: var(--tekst-1);
+    background: var(--ploha-3);
+    border-color: var(--rub-jak);
+}
+
+.prekidac[aria-pressed="true"] .prekidac-linija { border-top-color: var(--tekst-2); }
+
+/* Kartice u istom redu mreže iste visine. */
+.mud-grid-item > .panel { height: 100%; }
+
+/* ---------------------------------------------------------------
+   Alatna traka filtera
+   --------------------------------------------------------------- */
+
+.filteri {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s8);
+    margin-bottom: var(--s16);
+}
+
+.filteri-veznik {
+    font-size: var(--t-13);
+    color: var(--tekst-4);
+    padding: 0 2px;
+}
+
+.filteri .mud-input-control { margin-top: 0 !important; }
+.filteri > .mud-select,
+.filteri > .mud-input-control { flex: 0 1 190px; }
+
+/* ---------------------------------------------------------------
+   Brojevi i tabele
+   --------------------------------------------------------------- */
+
+.brojka {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.tabela-okvir {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+
+/* ---------------------------------------------------------------
+   Rang lista sa trakom iza reda (Vercel „Top pages")
+   --------------------------------------------------------------- */
+
+.lista {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lista-zaglavlje {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 10px 6px;
+    font-family: var(--font-mono);
+    font-size: var(--t-11);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--tekst-4);
+}
+
+.lista-red {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--s12);
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: var(--r-mali);
+    font-size: var(--t-13);
+    isolation: isolate;
+}
+
+.lista-traka {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: var(--r-mali);
+    background: var(--ploha-3);
+    z-index: -1;
+    transition: width .25s ease;
+}
+
+.lista-zaglavlje + .lista-red .lista-traka,
+.lista-red.istaknuto .lista-traka { background: var(--plava-tinta); }
+
+.lista-rang {
+    font-family: var(--font-mono);
+    font-size: var(--t-11);
+    color: var(--tekst-4);
+    width: 18px;
+    flex: none;
+}
+
+.lista-naziv {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--tekst-1);
+}
+
+.lista-vrijednost {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    color: var(--tekst-1);
+    white-space: nowrap;
+}
+
+.lista-sporedno {
+    font-variant-numeric: tabular-nums;
+    color: var(--tekst-4);
+    min-width: 48px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------
+   Traka udjela
+   --------------------------------------------------------------- */
+
+.udio-traka {
+    display: flex;
+    height: 10px;
+    border-radius: 3px;
+    overflow: hidden;
+    gap: 2px;
+    background: var(--ploha-3);
+}
+
+.udio-segment { height: 100%; min-width: 2px; transition: opacity .15s ease; }
+.udio-segment:hover { opacity: .8; }
+
+.udio-tacka {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+    flex: none;
+}
+
+.udio-red {
+    display: flex;
+    align-items: center;
+    gap: var(--s8);
+    padding: 10px 0;
+    border-top: 1px solid var(--rub);
+    font-size: var(--t-13);
+}
+
+.udio-red:first-child { border-top: 0; }
+
+.udio-veliki {
+    font-size: var(--t-24);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------
+   Toplotna mapa gužve
+   --------------------------------------------------------------- */
+
+.guzva {
+    display: grid;
+    gap: 3px;
+    grid-template-columns: 32px repeat(var(--guzva-sati), minmax(0, 1fr));
+    align-items: center;
+}
+
+.guzva-polje {
+    height: 22px;
+    border-radius: 3px;
+    min-width: 0;
+    transition: outline-color .1s ease;
+    outline: 1px solid transparent;
+    outline-offset: 1px;
+}
+
+.guzva .guzva-polje:hover { outline-color: var(--tekst-3); }
+
+.guzva-oznaka {
+    font-family: var(--font-mono);
+    font-size: var(--t-11);
+    color: var(--tekst-4);
+    white-space: nowrap;
+}
+
+.guzva-sat {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--tekst-4);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------
+   Prazno stanje i greška
+   --------------------------------------------------------------- */
+
+.obavijest {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s12);
+    padding: var(--s12) var(--s16);
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kartica);
+    background: var(--ploha);
+    margin-bottom: var(--s16);
+    font-size: var(--t-13);
+    color: var(--tekst-2);
+}
+
+.obavijest.greska { border-color: var(--pad-tinta); background: var(--pad-tinta); color: var(--tekst-1); }
+.obavijest .mud-icon-root { flex: none; margin-top: 1px; }
+
+.prazno {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s8);
+    padding: 48px var(--s16);
+    color: var(--tekst-3);
+    font-size: var(--t-13);
+    text-align: center;
+}
+
+.prazno strong { color: var(--tekst-1); font-weight: 500; font-size: var(--t-14); }
+
+/* ---------------------------------------------------------------
+   Ljuska aplikacije
+   --------------------------------------------------------------- */
+
+.app-traka {
+    background: var(--platno) !important;
+    border-bottom: 1px solid var(--rub);
+    color: var(--tekst-1) !important;
+    height: 56px !important;
+}
+
+.app-traka .mud-toolbar { min-height: 56px !important; height: 56px; }
+
+.app-mrvice {
+    display: flex;
+    align-items: center;
+    gap: var(--s8);
+    font-size: var(--t-14);
+    font-weight: 500;
+    color: var(--tekst-1);
+    min-width: 0;
+}
+
+.app-mrvice .kosa {
+    color: var(--tekst-4);
+    font-weight: 300;
+    font-size: 18px;
+}
+
+/* Restoran gore desno: ime i logo u krugu. Tačka na krugu je stanje veze sa kasom. */
+.restoran-znak {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 4px 4px 4px 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    color: var(--tekst-1);
+    text-decoration: none;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+
+.restoran-znak:hover { background: var(--ploha-2); border-color: var(--rub); }
+
+.restoran-ime {
+    font-size: var(--t-13);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+
+.restoran-krug {
+    position: relative;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--ploha-3);
+    border: 1px solid var(--rub-jak);
+    display: grid;
+    place-items: center;
+}
+
+.restoran-krug img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.restoran-krug .inicijali {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: var(--tekst-2);
+}
+
+.restoran-krug .tacka-veze {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--platno);
+    box-shadow: none;
+}
+
+@media (max-width: 599px) {
+    .restoran-ime { display: none; }
+    .restoran-znak { padding: 2px; }
+}
+
+/* Veći krug za uređivanje loga u postavkama. */
+.logo-uredjivac {
+    display: flex;
+    align-items: center;
+    gap: var(--s20);
+    flex-wrap: wrap;
+}
+
+.logo-uredjivac .restoran-krug { width: 88px; height: 88px; }
+.logo-uredjivac .restoran-krug .inicijali { font-size: 28px; }
+
+.polje-oznaka {
+    display: block;
+    font-size: var(--t-12);
+    color: var(--tekst-3);
+    margin-bottom: 6px;
+}
+
+/* Godine podataka */
+.godina-red {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--s16);
+    padding: 14px var(--s16);
+    border-top: 1px solid var(--rub);
+}
+
+.godina-red:first-child { border-top: 0; }
+
+.godina-broj {
+    font-size: var(--t-16);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.godina-opis { font-size: var(--t-12); color: var(--tekst-3); margin-top: 2px; }
+
+.izvor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--t-13);
+    color: var(--tekst-1);
+}
+
+.izvor-tacka { width: 8px; height: 8px; border-radius: 50%; background: var(--tekst-4); flex: none; }
+.izvor-tacka.uzivo { background: var(--rast); box-shadow: 0 0 0 3px var(--rast-tinta); }
+.izvor-tacka.baza { background: var(--plava); }
+.izvor-tacka.uvezeno { background: var(--upozorenje); }
+
+.uvoz-okvir {
+    border: 1px dashed var(--rub-jak);
+    border-radius: var(--r-kartica);
+    padding: var(--s16);
+    background: var(--ploha-2);
+}
+
+.uvoz-statistika {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: var(--s12);
+    margin: var(--s12) 0;
+}
+
+.uvoz-statistika > div {
+    background: var(--ploha);
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kontrola);
+    padding: 10px 12px;
+}
+
+.uvoz-statistika .vr { font-size: var(--t-16); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 599px) {
+    .godina-red { grid-template-columns: 56px minmax(0, 1fr); }
+    .godina-red > :last-child { grid-column: 1 / -1; }
+}
+
+.app-ladica {
+    background: var(--platno) !important;
+    border-right: 1px solid var(--rub) !important;
+}
+
+.ladica-sadrzaj {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: var(--s12) var(--s8);
+}
+
+.ladica-grupa {
+    font-family: var(--font-mono);
+    font-size: var(--t-11);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--tekst-4);
+    padding: var(--s16) 10px 6px;
+}
+
+.ladica-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: var(--r-mali);
+    color: var(--tekst-3);
+    font-size: var(--t-14);
+    font-weight: 400;
+    text-decoration: none;
+    transition: color .12s ease, background-color .12s ease;
+}
+
+.ladica-link .mud-icon-root { font-size: 18px; width: 18px; height: 18px; }
+
+.ladica-link:hover { color: var(--tekst-1); background: var(--ploha-2); }
+
+.ladica-link.active {
+    color: var(--tekst-1);
+    background: var(--ploha-3);
+    font-weight: 500;
+}
+
+.ladica-dno {
+    margin-top: auto;
+    border-top: 1px solid var(--rub);
+    padding: var(--s12) 10px 4px;
+    display: flex;
+    align-items: center;
+    gap: var(--s8);
+    font-size: var(--t-12);
+    color: var(--tekst-3);
+}
+
+.app-logo {
+    height: 22px;
+    width: auto;
+    display: block;
+}
+
+
+.ikona-dugme {
+    appearance: none;
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-kontrola);
+    border: 1px solid var(--rub);
+    background: var(--ploha);
+    color: var(--tekst-2);
+    cursor: pointer;
+    transition: color .12s ease, background-color .12s ease, border-color .12s ease;
+}
+
+.ikona-dugme:hover { color: var(--tekst-1); background: var(--ploha-2); border-color: var(--rub-jak); }
+.ikona-dugme[aria-pressed="true"] { color: var(--tekst-1); background: var(--ploha-3); border-color: var(--rub-jak); }
+.ikona-dugme .mud-icon-root { font-size: 18px; width: 18px; height: 18px; }
+.ikona-dugme.bez-ruba { border-color: transparent; background: transparent; }
+
+/* ---------------------------------------------------------------
+   MudBlazor usklađivanje
+   --------------------------------------------------------------- */
+
+.mud-drawer,
+.mud-dialog { overscroll-behavior: contain; }
+
+.mud-elevation-1, .mud-elevation-2, .mud-elevation-3,
+.mud-elevation-4, .mud-elevation-8, .mud-paper {
+    box-shadow: none !important;
+}
+
+.mud-popover, .mud-picker-popover-paper, .mud-dialog {
+    border: 1px solid var(--rub-jak);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .35) !important;
+    background: var(--ploha) !important;
+}
+
+.mud-dialog { border-radius: var(--r-kartica) !important; }
+.mud-dialog .mud-dialog-title { font-weight: 600; letter-spacing: -0.02em; }
+
+.mud-button-root {
+    border-radius: var(--r-kontrola) !important;
+    text-transform: none !important;
+    letter-spacing: -0.005em !important;
+    font-weight: 500 !important;
+    min-height: 34px;
+    box-shadow: none !important;
+}
+
+.mud-button-filled {
+    background: var(--tekst-1) !important;
+    color: var(--platno) !important;
+}
+
+.mud-button-filled:hover { opacity: .88; }
+
+.mud-button-outlined {
+    border-color: var(--rub-jak) !important;
+    color: var(--tekst-1) !important;
+    background: var(--ploha) !important;
+}
+
+.mud-button-text { color: var(--tekst-2) !important; }
+.mud-button-text:hover { color: var(--tekst-1) !important; background: var(--ploha-2) !important; }
+
+.mud-icon-button { border-radius: var(--r-kontrola) !important; }
+
+.mud-input-outlined .mud-input-outlined-border {
+    border-radius: var(--r-kontrola) !important;
+    border-color: var(--rub) !important;
+}
+
+.mud-input-outlined:hover .mud-input-outlined-border { border-color: var(--rub-jak) !important; }
+
+.mud-input-outlined.mud-input-adorned-end,
+.mud-input.mud-input-outlined { background: var(--ploha); border-radius: var(--r-kontrola); }
+
+.mud-input-outlined:focus-within .mud-input-outlined-border {
+    border-color: var(--plava) !important;
+    border-width: 1px !important;
+}
+
+.mud-input-control .mud-input-label-outlined { background: transparent; }
+.mud-input-label { color: var(--tekst-3) !important; }
+.mud-input { font-size: var(--t-13) !important; color: var(--tekst-1) !important; }
+
+.mud-list-item { font-size: var(--t-13); }
+
+/* Tabele: hairline redovi, bez zebre, zaglavlje sitnim monospace slovima. */
+.mud-table,
+.mud-simple-table { background: transparent !important; }
+
+.mud-table-container { background: transparent; }
+
+.mud-table-cell,
+.mud-simple-table table * tr > td,
+.mud-simple-table table * tr > th {
+    border-color: var(--rub) !important;
+    font-size: var(--t-13) !important;
+    padding: 9px 16px !important;
+}
+
+.mud-table-head .mud-table-cell,
+.mud-table thead th.mud-table-cell,
+.mud-simple-table table thead tr th {
+    font-family: var(--font-mono) !important;
+    font-size: var(--t-11) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    line-height: 1.3 !important;
+    color: var(--tekst-4) !important;
+    font-weight: 500 !important;
+    background: var(--ploha) !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.mud-simple-table.mud-table-striped table tbody tr:nth-of-type(odd) { background: transparent !important; }
+
+.mud-table-hover .mud-table-container .mud-table-root .mud-table-body .mud-table-row:hover,
+.mud-simple-table tbody tr:hover { background: var(--ploha-2) !important; }
+
+.mud-table-row:last-child .mud-table-cell { border-bottom: 0 !important; }
+
+.mud-switch .mud-switch-track { opacity: 1 !important; background: var(--ploha-3) !important; }
+
+.mud-alert {
+    border-radius: var(--r-kartica) !important;
+    font-size: var(--t-13);
+}
+
+.mud-alert-outlined-info { border-color: var(--rub) !important; background: var(--ploha) !important; color: var(--tekst-2) !important; }
+.mud-alert-outlined-info .mud-alert-icon { color: var(--plava) !important; }
+.mud-alert-outlined-warning { border-color: transparent !important; background: var(--upozorenje-tinta) !important; color: var(--tekst-1) !important; }
+.mud-alert-outlined-warning .mud-alert-icon { color: var(--upozorenje) !important; }
+.mud-alert-outlined-error { border-color: transparent !important; background: var(--pad-tinta) !important; color: var(--tekst-1) !important; }
+
+.mud-progress-linear { border-radius: 2px; }
+
+.mud-expand-panel {
+    background: var(--ploha) !important;
+    border: 1px solid var(--rub);
+    border-radius: var(--r-kartica) !important;
+}
+
+.mud-chip { border-radius: var(--r-mali) !important; }
+
+.mud-tooltip {
+    background: var(--ploha-3) !important;
+    color: var(--tekst-1) !important;
+    border: 1px solid var(--rub-jak);
+    font-size: var(--t-12) !important;
+}
+
+/* ApexCharts oblačić u istom jeziku kao ostatak. */
+.apexcharts-tooltip {
+    border-radius: var(--r-kontrola) !important;
+    border: 1px solid var(--rub-jak) !important;
+    background: var(--ploha) !important;
+    color: var(--tekst-1) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .3) !important;
+    font-family: var(--font-ui) !important;
+}
+
+.apexcharts-tooltip-title {
+    background: var(--ploha-2) !important;
+    border-bottom: 1px solid var(--rub) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    color: var(--tekst-3) !important;
+}
+
+.apexcharts-xaxistooltip { display: none !important; }
+
+#blazor-error-ui {
+    background: var(--ploha);
+    color: var(--tekst-1);
+    border-top: 1px solid var(--rub);
+    bottom: 0;
+    display: none;
+    left: 0;
+    padding: .8rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1500;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: .75rem;
+    top: .5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}
+
+/* ---------------------------------------------------------------
+   Prijava i registracija
+   --------------------------------------------------------------- */
+
+.nalog-okvir {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 40px 16px;
+    background:
+        radial-gradient(ellipse 60% 50% at 50% 0%, rgba(59, 139, 255, .12), transparent 70%),
+        var(--platno);
+}
+
+.nalog-kolona { width: 100%; max-width: 420px; }
+.nalog-logo { height: 30px; width: auto; display: block; margin: 0 auto 28px; }
+.nalog-kartica { overflow: visible; }
+.nalog-kartica .panel-tijelo { padding: 32px; }
+.nalog-dno { text-align: center; color: var(--tekst-4); font-size: var(--t-12); margin-top: 20px; }
+
+.nalog-polje {
+    width: 100%;
+    box-sizing: border-box;
+    height: 42px;
+    padding: 0 12px;
+    border-radius: var(--r-kontrola);
+    border: 1px solid var(--rub-jak);
+    background: var(--ploha-2);
+    color: var(--tekst-1);
+    font: inherit;
+    font-size: var(--t-14);
+    outline: none;
+    transition: border-color .12s ease;
+}
+
+.nalog-polje:focus { border-color: var(--plava); }
+.nalog-polje.invalid { border-color: var(--pad); }
+.nalog-greska, .validation-message { display: block; color: var(--pad); font-size: var(--t-12); margin-top: 4px; }
+
+.nalog-dugme {
+    width: 100%;
+    height: 42px;
+    margin-top: 24px;
+    border: 0;
+    border-radius: var(--r-kontrola);
+    background: var(--tekst-1);
+    color: var(--platno);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.nalog-dugme:hover { opacity: .9; }
+.nalog-kartica a, .obavijest a { color: var(--plava); text-decoration: none; }
+
+/* Odjava u ladici izgleda kao stavka menija. */
+.ladica-dugme {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+/* ---------------------------------------------------------------
+   Poveži kasu
+   --------------------------------------------------------------- */
+
+.veza-znak {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--ploha-3);
+    color: var(--tekst-3);
+    flex: none;
+}
+
+.veza-znak.na-vezi { background: var(--rast-tinta); color: var(--rast); }
+
+.korak .panel-tijelo { padding: 22px; }
+
+.korak-broj {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--rub-jak);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: var(--t-12);
+    color: var(--tekst-2);
+    margin-bottom: 14px;
+}
+
+.korak .naslov-panela { font-size: var(--t-16); margin-bottom: 6px; }
+
+.kod-okvir {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: var(--r-kontrola);
+    background: var(--ploha-2);
+    border: 1px dashed var(--rub-jak);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kod { font-size: 22px; letter-spacing: .12em; color: var(--tekst-1); }
+
+.koraci-lista {
+    margin: 8px 0 12px 18px;
+    padding: 0;
+    color: var(--tekst-2);
+    font-size: var(--t-13);
+    line-height: 1.8;
+}

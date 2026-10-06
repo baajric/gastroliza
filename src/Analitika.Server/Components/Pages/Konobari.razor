@@ -1,0 +1,154 @@
+@page "/konobari"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+
+<PageTitle>Konobari</PageTitle>
+
+<NaslovStranice Naslov="Konobari"
+                Opis="@($"{Stanje.Od:dd.MM.yyyy.} – {Stanje.Do:dd.MM.yyyy.}")" />
+
+<PeriodIzbornik />
+
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="@(_konobari.Count == 0)" />
+
+@if (_konobari.Count > 0)
+{
+    <div style="@(_ucitava ? "opacity:.5" : "")">
+        @* Dvije odvojene rang liste — promet i broj artikala nisu isto i ne stavljaju se na isti graf. *@
+        <MudGrid Spacing="4">
+            <MudItem xs="12" md="6">
+                <GrafOkvir Naslov="Po prometu" Podnaslov="Ukupno naplaćeno u periodu">
+                    <Graf>
+                        <RangLista T="RedKonobara" Stavke="PoPrometu" Naziv="@(k => k.Ime)" Vrijednost="@(k => k.Promet)"
+                                   Oblik="@(v => v.ToString("N0") + " KM")"
+                                   NaslovNaziva="Konobar" NaslovVrijednosti="Promet" />
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped>
+                            <thead><tr><th>Konobar</th><th class="brojka">Promet (KM)</th></tr></thead>
+                            <tbody>
+                                @foreach (var k in _konobari.OrderByDescending(x => x.Promet))
+                                {
+                                    <tr><td>@k.Ime</td><td class="brojka">@k.Promet.ToString("N2")</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <GrafOkvir Naslov="Po broju artikala" Podnaslov="Ukupno prodanih komada">
+                    <Graf>
+                        <RangLista T="RedKonobara" Stavke="PoArtiklima" Naziv="@(k => k.Ime)" Vrijednost="@(k => k.BrojArtikala)"
+                                   NaslovNaziva="Konobar" NaslovVrijednosti="Komada" />
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped>
+                            <thead><tr><th>Konobar</th><th class="brojka">Artikala</th></tr></thead>
+                            <tbody>
+                                @foreach (var k in _konobari.OrderByDescending(x => x.BrojArtikala))
+                                {
+                                    <tr><td>@k.Ime</td><td class="brojka">@k.BrojArtikala.ToString("N0")</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12">
+                <div class="panel">
+                    <div class="panel-zaglavlje">
+                        <div>
+                            <h2 class="displej naslov-panela">Detaljno</h2>
+                            <div class="opis">Svi konobari, poredani po prometu</div>
+                        </div>
+                    </div>
+                    @* Ispod Sm se red raspada u karticu sa oznakama — šest kolona se ne da
+                       stisnuti u širinu telefona bez vodoravnog skrolanja. *@
+                    <MudTable Items="_konobari.OrderByDescending(k => k.Promet)" Dense Hover Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Konobar</MudTh>
+                            <MudTh Style="text-align:right;">Promet (KM)</MudTh>
+                            <MudTh Style="text-align:right;">Artikala</MudTh>
+                            <MudTh Style="text-align:right;">Računa</MudTh>
+                            <MudTh Style="text-align:right;">Pros. korpa (KM)</MudTh>
+                            <MudTh Style="text-align:right;">Udio u prometu</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="k">
+                            <MudTd DataLabel="Konobar">@k.Ime</MudTd>
+                            <MudTd DataLabel="Promet (KM)" Class="brojka">@k.Promet.ToString("N2")</MudTd>
+                            <MudTd DataLabel="Artikala" Class="brojka">@k.BrojArtikala.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Računa" Class="brojka">@k.BrojRacuna.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Pros. korpa (KM)" Class="brojka">@k.ProsjecnaKorpa.ToString("N2")</MudTd>
+                            <MudTd DataLabel="Udio u prometu" Class="brojka">@Udio(k).ToString("N1")%</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </div>
+}
+
+@code {
+    private List<RedKonobara> _konobari = [];
+    private bool _ucitava;
+    private string? _greska;
+
+    // Rang lista: najbolji na vrhu. Boja ostaje ista jer je serija jedna.
+    private List<RedKonobara> PoPrometu => [.. _konobari.OrderByDescending(k => k.Promet)];
+    private List<RedKonobara> PoArtiklima => [.. _konobari.OrderByDescending(k => k.BrojArtikala)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Stanje.Promjena += NaPromjenu;
+        await UcitajAsync();
+    }
+
+    private void NaPromjenu() => _ = InvokeAsync(UcitajAsync);
+
+    private decimal Udio(RedKonobara k)
+    {
+        var ukupno = _konobari.Sum(x => x.Promet);
+        return ukupno == 0 ? 0 : k.Promet / ukupno * 100m;
+    }
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            _konobari = [];
+            StateHasChanged();
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        StateHasChanged();
+
+        try
+        {
+            var svi = await Podaci.KonobariAsync();
+
+            // Administrator i prazna kartica nisu konobari — samo bi kvarili rang listu.
+            _konobari = [.. svi.Where(k => !string.IsNullOrWhiteSpace(k.IdKartice)
+                                           && !k.Ime.Equals("ADMINISTRATOR", StringComparison.OrdinalIgnoreCase))];
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose() => Stanje.Promjena -= NaPromjenu;
+}

@@ -1,0 +1,35 @@
+@* Jedno mjesto za "učitava se", "greška" i "nema podataka" — da svaka stranica ne izmišlja svoje. *@
+
+@if (Greska is not null)
+{
+    <div class="obavijest greska" role="alert">
+        <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" Style="color:var(--pad);" />
+        <span>@Greska</span>
+        @if (Greska.Contains("nije na vezi"))
+        {
+            <a href="povezivanje" style="margin-left:auto; white-space:nowrap;">Poveži kasu →</a>
+        }
+    </div>
+}
+else if (Ucitava)
+{
+    @* Prvi dolazak je deblja traka; osvježavanje samo tanka linija, stari prikaz ostaje prigušen. *@
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-4"
+                       Style="@(Prazno ? "height:3px;" : "height:2px;")" />
+}
+else if (Prazno)
+{
+    <div class="panel">
+        <div class="prazno">
+            <MudIcon Icon="@Icons.Material.Outlined.EventBusy" />
+            <strong>Nema prometa u izabranom periodu</strong>
+            <span>Probaj širi period ili drugi datum.</span>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Ucitava { get; set; }
+    [Parameter] public string? Greska { get; set; }
+    [Parameter] public bool Prazno { get; set; }
+}

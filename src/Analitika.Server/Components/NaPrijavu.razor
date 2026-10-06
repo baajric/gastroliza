@@ -1,0 +1,9 @@
+@inject NavigationManager Navigacija
+
+@code {
+    protected override void OnInitialized()
+    {
+        var povratak = "/" + Navigacija.ToBaseRelativePath(Navigacija.Uri);
+        Navigacija.NavigateTo($"/nalog/prijava?ReturnUrl={Uri.EscapeDataString(povratak)}", forceLoad: true);
+    }
+}

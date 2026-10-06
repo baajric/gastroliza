@@ -1,0 +1,91 @@
+@page "/nalog/prijava"
+@layout NalogLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Analitika.Server.Nalozi
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject ServerBaza Baza
+@inject KocnicaPrijave Kocnica
+@inject NavigationManager Navigacija
+
+<PageTitle>Prijava · Gastroliza</PageTitle>
+
+<section class="panel nalog-kartica">
+    <div class="panel-tijelo">
+        <h1 class="displej naslov-stranice">Prijava</h1>
+        <p class="opis" style="margin:6px 0 24px;">Prati promet, konobare i zalihe svog restorana.</p>
+
+        @if (_greska is not null)
+        {
+            <div class="obavijest greska" role="alert">@_greska</div>
+        }
+
+        <EditForm Model="Unos" FormName="prijava" OnValidSubmit="PrijaviAsync" method="post">
+            <DataAnnotationsValidator />
+
+            <label class="polje-oznaka" for="email">Email</label>
+            <InputText id="email" class="nalog-polje" @bind-Value="Unos.Email" autocomplete="username" type="email" />
+            <ValidationMessage For="() => Unos.Email" class="nalog-greska" />
+
+            <label class="polje-oznaka" for="lozinka" style="margin-top:16px;">Lozinka</label>
+            <InputText id="lozinka" class="nalog-polje" @bind-Value="Unos.Lozinka" autocomplete="current-password" type="password" />
+            <ValidationMessage For="() => Unos.Lozinka" class="nalog-greska" />
+
+            <button type="submit" class="nalog-dugme">Prijavi se</button>
+        </EditForm>
+
+        <p class="opis" style="margin-top:20px; text-align:center;">
+            Nemaš nalog? <a href="nalog/registracija">Registruj restoran</a>
+        </p>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "prijava")]
+    private UnosPrijave Unos { get; set; } = new();
+
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string? _greska;
+
+    private async Task PrijaviAsync()
+    {
+        var adresa = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var email = Unos.Email.Trim();
+
+        if (Kocnica.JeZakocen(email, adresa))
+        {
+            _greska = "Previše pogrešnih pokušaja. Pokušaj ponovo za 15 minuta.";
+            return;
+        }
+
+        var korisnik = Baza.Prijavi(email, Unos.Lozinka);
+        if (korisnik is null)
+        {
+            Kocnica.Greska(email, adresa);
+            // Ista poruka za nepostojeći email i pogrešnu lozinku — ne odaje ko ima nalog.
+            _greska = "Email ili lozinka nisu tačni.";
+            return;
+        }
+
+        Kocnica.Uspjeh(email);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+            Prijava.Napravi(korisnik, Baza.RestoraniKorisnika(korisnik.Id)),
+            new AuthenticationProperties { IsPersistent = true });
+
+        Navigacija.NavigateTo(Prijava.SiguranPovratak(ReturnUrl), forceLoad: true);
+    }
+
+    private sealed class UnosPrijave
+    {
+        [Required(ErrorMessage = "Upiši email.")]
+        [EmailAddress(ErrorMessage = "Email nije ispravan.")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Upiši lozinku.")]
+        public string Lozinka { get; set; } = "";
+    }
+}

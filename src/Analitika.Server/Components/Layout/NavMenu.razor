@@ -1,0 +1,58 @@
+@using Analitika.Server.Mostovi
+@using Analitika.Server.Servisi
+@inject StanjeAplikacije Stanje
+@inject MostKlijent Most
+
+@*
+    Ladica po uzoru na Vercel: grupe sa sitnim monospace naslovom, aktivna stavka
+    je ispunjena ploha, ne obojena crta. Na dnu stoji stanje veze sa kasom.
+*@
+
+<nav class="ladica-sadrzaj" aria-label="Glavni meni">
+    <div class="ladica-grupa" style="padding-top:4px;">Prodaja</div>
+    <NavLink class="ladica-link" href="/" Match="NavLinkMatch.All">
+        <MudIcon Icon="@Icons.Material.Outlined.SpaceDashboard" /> Pregled
+    </NavLink>
+    <NavLink class="ladica-link" href="/artikli">
+        <MudIcon Icon="@Icons.Material.Outlined.LocalBar" /> Artikli
+    </NavLink>
+    <NavLink class="ladica-link" href="/konobari">
+        <MudIcon Icon="@Icons.Material.Outlined.Badge" /> Konobari
+    </NavLink>
+
+    <div class="ladica-grupa">Zalihe</div>
+    <NavLink class="ladica-link" href="/normativi">
+        <MudIcon Icon="@Icons.Material.Outlined.MenuBook" /> Normativi
+    </NavLink>
+    <NavLink class="ladica-link" href="/utrosak">
+        <MudIcon Icon="@Icons.Material.Outlined.Inventory2" /> Utrošak zaliha
+    </NavLink>
+    <NavLink class="ladica-link" href="/projekcije">
+        <MudIcon Icon="@Icons.Material.Outlined.Insights" /> Projekcije
+    </NavLink>
+
+    <div class="ladica-grupa">Sistem</div>
+    <NavLink class="ladica-link" href="/postavke">
+        <MudIcon Icon="@Icons.Material.Outlined.Tune" /> Postavke
+    </NavLink>
+    <NavLink class="ladica-link" href="/povezivanje">
+        <MudIcon Icon="@Icons.Material.Outlined.Cable" /> Poveži kasu
+    </NavLink>
+
+    @* Odjava je POST sa antiforgery tokenom, ne običan link. *@
+    <form action="nalog/odjava" method="post" style="margin:0;">
+        <AntiforgeryToken />
+        <button type="submit" class="ladica-link ladica-dugme">
+            <MudIcon Icon="@Icons.Material.Outlined.Logout" /> Odjava
+        </button>
+    </form>
+
+    @if (Stanje.Restoran is { } r)
+    {
+        var naVezi = Most.JeNaVezi(r.Id);
+        <div class="ladica-dno">
+            <span class="tacka-veze @(naVezi ? "na-vezi" : "")" aria-hidden="true"></span>
+            <span>@(naVezi ? "Kasa na vezi" : "Kasa nije na vezi")</span>
+        </div>
+    }
+</nav>

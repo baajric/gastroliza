@@ -1,0 +1,67 @@
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@inject StanjeAplikacije Stanje
+
+@*
+    Dio-od-cjeline sa dvije-tri stavke: veliki postoci gore, tanka složena traka
+    ispod, pa redovi sa iznosima. Kolač se ne koristi — dužina se čita tačnije od ugla.
+*@
+
+@if (Redovi.Count == 0)
+{
+    <div class="opis">Nema podataka za ovaj period.</div>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-6 mb-4">
+        @foreach (var (red, i) in Redovi.Select((r, i) => (r, i)))
+        {
+            <div>
+                <div class="d-flex align-center gap-2 opis" style="margin-bottom:2px;">
+                    <span class="udio-tacka" style="@($"background:{Boja(i)};")"></span>@red.Grupa
+                </div>
+                <div class="udio-veliki">@Postotak(red).ToString("N0")<span class="plocica-jedinica">%</span></div>
+            </div>
+        }
+    </div>
+
+    <div class="udio-traka">
+        @foreach (var (red, i) in Redovi.Select((r, i) => (r, i)))
+        {
+            <div class="udio-segment"
+                 style="@($"width:{Postotak(red).ToString(Inv)}%; background:{Boja(i)};")"
+                 title="@($"{red.Grupa}: {red.Promet:N2} KM")"></div>
+        }
+    </div>
+
+    <div class="mt-4">
+        @foreach (var (red, i) in Redovi.Select((r, i) => (r, i)))
+        {
+            <div class="udio-red">
+                <span class="udio-tacka" style="@($"background:{Boja(i)};")"></span>
+                <span>@red.Grupa</span>
+                <MudSpacer />
+                <span class="brojka" style="font-weight:500;">@red.Promet.ToString("N0") KM</span>
+                <span class="brojka" style="min-width:52px; color:var(--tekst-4);">@Postotak(red).ToString("N1")%</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<RedGrupe> Redovi { get; set; } = [];
+
+    private static readonly System.Globalization.CultureInfo Inv =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    private decimal Ukupno => Redovi.Sum(r => r.Promet);
+
+    private decimal Postotak(RedGrupe r) => Ukupno == 0 ? 0 : r.Promet / Ukupno * 100m;
+
+    // Boja prati redoslijed grupa, ne njihovu veličinu — filter ne smije prebojiti preživjele.
+    private string Boja(int i)
+    {
+        var paleta = Paleta.Kategorijski();
+        return paleta[i % paleta.Length];
+    }
+}

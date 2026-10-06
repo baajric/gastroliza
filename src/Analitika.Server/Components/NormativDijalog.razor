@@ -1,0 +1,187 @@
+@using System.Globalization
+@using Analitika.Shared.Upiti
+
+<MudDialog>
+    <DialogContent>
+        <MudAutocomplete T="Artikal" Label="Artikal" Value="_artikal" ValueChanged="ArtikalIzabran"
+                         SearchFunc="TraziArtikal" ToStringFunc="@(a => a?.Naziv ?? "")"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4"
+                         Disabled="_zakljucanArtikal" ResetValueOnEmptyText CoerceText />
+
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Sastojci</MudText>
+
+        @if (_stavke.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                Dodaj bar jedan repromaterijal i količinu za jednu porciju.
+            </MudText>
+        }
+
+        @foreach (var (stavka, i) in _stavke.Select((s, i) => (s, i)))
+        {
+            <div class="d-flex align-center gap-2 mb-2">
+                <MudAutocomplete T="Repromaterijal" Value="@Nadji(stavka.RepromaterijalBarkod)"
+                                 ValueChanged="@(r => ReproIzabran(i, r))"
+                                 SearchFunc="TraziRepro" ToStringFunc="@(r => r?.Naziv ?? "")"
+                                 Label="Repromaterijal" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Class="flex-grow-1" ResetValueOnEmptyText CoerceText />
+
+                @* Culture se mora zadati — inače polje čita brojeve po invarijantnoj kulturi,
+                   pa uneseno „0,18" postane 18. *@
+                <MudNumericField T="decimal" Value="stavka.Kolicina" ValueChanged="@(v => KolicinaPromijenjena(i, v))"
+                                 Label="Količina" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Culture="@CultureInfo.CurrentCulture"
+                                 Min="0" Step="0.01M" Format="N3" Style="max-width:130px;" />
+
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Style="min-width:44px;">@stavka.Jm</MudText>
+
+                @if (stavka.RepromaterijalBarkod != 0 && stavka.NabavnaCijena == 0)
+                {
+                    <MudTooltip Text="Ovaj repromaterijal nema nabavnu cijenu u šifarniku kase, pa ne ulazi u cijenu porcije.">
+                        <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Size="Size.Small" Color="Color.Warning" />
+                    </MudTooltip>
+                }
+
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                               OnClick="@(() => _stavke.RemoveAt(i))" title="Ukloni" />
+            </div>
+        }
+
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Variant="Variant.Text"
+                   OnClick="DodajStavku" Class="mt-1">
+            Dodaj sastojak
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <div class="d-flex align-center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Nabavna cijena porcije</MudText>
+            <MudSpacer />
+            <MudText Typo="Typo.h6">@Cijena.ToString("N2") KM</MudText>
+        </div>
+
+        @if (_artikal is { } a && a.Cijena > 0 && Cijena > 0)
+        {
+            <div class="d-flex align-center mt-1">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Prodajna @a.Cijena.ToString("N2") KM — razlika u cijeni
+                </MudText>
+                <MudSpacer />
+                <MudText Typo="Typo.body2">
+                    @((a.Cijena - Cijena).ToString("N2")) KM (@(((a.Cijena - Cijena) / a.Cijena * 100).ToString("N0"))%)
+                </MudText>
+            </div>
+        }
+
+        @if (_stavke.Any(s => s.RepromaterijalBarkod != 0 && s.NabavnaCijena == 0))
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense Class="mt-3">
+                Neki sastojci nemaju nabavnu cijenu u šifarniku kase, pa je izračunata cijena porcije
+                manja od stvarne. Recept je i dalje ispravan za praćenje utroška zaliha.
+            </MudAlert>
+        }
+
+        @if (_greska is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense Class="mt-3">@_greska</MudAlert>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="@(() => Dijalog.Cancel())">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Snimi">Snimi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dijalog { get; set; } = default!;
+
+    [Parameter] public Normativ? Polazni { get; set; }
+    [Parameter] public List<Artikal> Artikli { get; set; } = [];
+    [Parameter] public List<Repromaterijal> Repromaterijali { get; set; } = [];
+
+    private Artikal? _artikal;
+    private List<NormativStavka> _stavke = [];
+    private bool _zakljucanArtikal;
+    private string? _greska;
+
+    private decimal Cijena => _stavke.Sum(s => s.Kolicina * s.NabavnaCijena);
+
+    protected override void OnInitialized()
+    {
+        if (Polazni is null) return;
+
+        _artikal = Artikli.FirstOrDefault(a => a.Sifra == Polazni.ArtikalSifra)
+                   ?? new Artikal(Polazni.ArtikalSifra, Polazni.ArtikalNaziv, null, null, 0);
+
+        // Artikal se ne mijenja na postojećem receptu — inače bi se recept "preselio".
+        _zakljucanArtikal = Polazni.Id != 0;
+        _stavke = [.. Polazni.Stavke];
+    }
+
+    private Task<IEnumerable<Artikal>> TraziArtikal(string? tekst, CancellationToken ct) =>
+        Task.FromResult(Filtriraj(Artikli, tekst, a => a.Naziv));
+
+    private Task<IEnumerable<Repromaterijal>> TraziRepro(string? tekst, CancellationToken ct) =>
+        Task.FromResult(Filtriraj(Repromaterijali, tekst, r => r.Naziv));
+
+    private static IEnumerable<T> Filtriraj<T>(List<T> izvor, string? tekst, Func<T, string> naziv) =>
+        string.IsNullOrWhiteSpace(tekst)
+            ? izvor.Take(30)
+            : izvor.Where(x => naziv(x).Contains(tekst, StringComparison.OrdinalIgnoreCase)).Take(30);
+
+    private Repromaterijal? Nadji(double barkod) =>
+        Repromaterijali.FirstOrDefault(r => r.Barkod == barkod);
+
+    private void ArtikalIzabran(Artikal? a) => _artikal = a;
+
+    private void DodajStavku() =>
+        _stavke.Add(new NormativStavka { RepromaterijalBarkod = 0, Naziv = "", Kolicina = 0 });
+
+    private void ReproIzabran(int i, Repromaterijal? r)
+    {
+        if (r is null) return;
+
+        // Cijena se prepisuje sada, da kasnije poskupljenje sirovine ne promijeni
+        // unazad već izračunatu cijenu porcije.
+        _stavke[i] = _stavke[i] with
+        {
+            RepromaterijalBarkod = r.Barkod,
+            Naziv = r.Naziv,
+            Jm = r.Jm,
+            NabavnaCijena = r.NabavnaCijena
+        };
+    }
+
+    private void KolicinaPromijenjena(int i, decimal v) => _stavke[i] = _stavke[i] with { Kolicina = v };
+
+    private void Snimi()
+    {
+        if (_artikal is null)
+        {
+            _greska = "Izaberi artikal.";
+            return;
+        }
+
+        var valjane = _stavke.Where(s => s.RepromaterijalBarkod != 0 && s.Kolicina > 0).ToList();
+        if (valjane.Count == 0)
+        {
+            _greska = "Dodaj bar jedan sastojak sa količinom većom od nule.";
+            return;
+        }
+
+        if (valjane.Select(s => s.RepromaterijalBarkod).Distinct().Count() != valjane.Count)
+        {
+            _greska = "Isti repromaterijal je naveden više puta.";
+            return;
+        }
+
+        Dijalog.Close(DialogResult.Ok(new Normativ
+        {
+            Id = Polazni?.Id ?? 0,
+            ArtikalSifra = _artikal.Sifra,
+            ArtikalNaziv = _artikal.Naziv,
+            Stavke = valjane
+        }));
+    }
+}

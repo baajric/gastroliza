@@ -1,0 +1,250 @@
+@page "/normativi"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+@inject IDialogService Dijalozi
+@inject ISnackbar Poruke
+
+<PageTitle>Normativi</PageTitle>
+
+<NaslovStranice Naslov="Normativi"
+                Opis="Recept po artiklu — koji repromaterijal i koliko ide u jednu porciju.">
+    <Radnje>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Download"
+                   OnClick="UveziAsync" Disabled="_radi">
+            Uvezi iz kase
+        </MudButton>
+        @* Jedina puna dugmad u aplikaciji: primarna akcija. Plava ostaje rezervisana za nju. *@
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Add"
+                   OnClick="@(() => OtvoriAsync(null))" Disabled="_radi">
+            Novi normativ
+        </MudButton>
+    </Radnje>
+</NaslovStranice>
+
+<StanjeVeze Ucitava="_radi" Greska="@_greska" Prazno="false" />
+
+<MudGrid>
+    <MudItem xs="12" md="7">
+        <div class="panel">
+            <div class="panel-zaglavlje">
+                <h2 class="displej naslov-panela">Uneseni recepti</h2>
+                <span class="opis">@_normativi.Count</span>
+            </div>
+
+            @if (_normativi.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Još nema nijednog recepta. Uvezi postojeće iz kase ili dodaj novi.
+                </MudText>
+            }
+            else
+            {
+                <MudTable Items="_normativi" Dense Hover Breakpoint="Breakpoint.Sm" Height="560px" FixedHeader>
+                    <HeaderContent>
+                        <MudTh>Artikal</MudTh>
+                        <MudTh Style="text-align:right;">Sastojaka</MudTh>
+                        <MudTh Style="text-align:right;">Cijena porcije</MudTh>
+                        <MudTh Style="text-align:right;">Vrijedi od</MudTh>
+                        <MudTh Style="width:96px;"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="n">
+                        <MudTd DataLabel="Artikal">@n.ArtikalNaziv</MudTd>
+                        <MudTd DataLabel="Sastojaka" Class="brojka">@n.Stavke.Count</MudTd>
+                        <MudTd DataLabel="Cijena porcije" Class="brojka">@n.NabavnaCijena.ToString("N2") KM</MudTd>
+                        <MudTd DataLabel="Vrijedi od" Class="brojka">
+                            @if (n.VaziOd.Year <= 2000)
+                            {
+                                <MudTooltip Text="Recept obuhvata i raniju prodaju, jer je prvi za ovaj artikal.">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">od početka</MudText>
+                                </MudTooltip>
+                            }
+                            else
+                            {
+                                @n.VaziOd.ToString("dd.MM.yyyy.")
+                            }
+                        </MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="@(() => OtvoriAsync(n))" title="Izmijeni" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small"
+                                           OnClick="@(() => ZatvoriAsync(n))" title="Arhiviraj" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" md="5">
+        <div class="panel">
+            <div class="panel-zaglavlje">
+                <h2 class="displej naslov-panela">Nedostaju recepti</h2>
+                <span class="opis">Ovi prvi troše zalihe</span>
+            </div>
+
+            @if (_bez.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Svi prodavani artikli imaju recept.</MudText>
+            }
+            else
+            {
+                <MudTable Items="_bez" Dense Hover Breakpoint="Breakpoint.Sm" Height="560px" FixedHeader>
+                    <HeaderContent>
+                        <MudTh>Artikal</MudTh>
+                        <MudTh Style="text-align:right;">Prodano</MudTh>
+                        <MudTh Style="width:48px;"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="a">
+                        <MudTd DataLabel="Artikal">
+                            @a.Naziv
+                            @if (a.Grupa is not null)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">@a.Grupa</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Prodano" Class="brojka">@a.Kolicina.ToString("N0")</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.AddCircleOutline" Size="Size.Small"
+                                           OnClick="@(() => OtvoriZaArtikalAsync(a))" title="Dodaj recept" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </div>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<Normativ> _normativi = [];
+    private List<ArtikalBezNormativa> _bez = [];
+    private List<Artikal> _artikli = [];
+    private List<Repromaterijal> _repro = [];
+
+    private bool _radi;
+    private string? _greska;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Stanje.Promjena += NaPromjenu;
+        await UcitajAsync();
+    }
+
+    private void NaPromjenu() => _ = InvokeAsync(UcitajAsync);
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            StateHasChanged();
+            return;
+        }
+
+        _radi = true;
+        _greska = null;
+        StateHasChanged();
+
+        try
+        {
+            _normativi = await Podaci.NormativiAsync();
+            _bez = await Podaci.BezNormativaAsync(30);
+
+            // Šifarnici se dohvaćaju jednom — mijenjaju se rijetko.
+            if (_artikli.Count == 0) _artikli = await Podaci.SifarnikArtikalaAsync();
+            if (_repro.Count == 0) _repro = await Podaci.SifarnikRepromaterijalaAsync();
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _radi = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task OtvoriZaArtikalAsync(ArtikalBezNormativa a) =>
+        OtvoriAsync(new Normativ { ArtikalSifra = a.Sifra, ArtikalNaziv = a.Naziv });
+
+    private async Task OtvoriAsync(Normativ? postojeci)
+    {
+        var parametri = new DialogParameters<NormativDijalog>
+        {
+            { x => x.Polazni, postojeci },
+            { x => x.Artikli, _artikli },
+            { x => x.Repromaterijali, _repro }
+        };
+
+        // Id = 0 znači da je artikal samo predložen iz liste "nedostaju recepti" — to je i dalje novi unos.
+        var dijalog = await Dijalozi.ShowAsync<NormativDijalog>(
+            postojeci is null || postojeci.Id == 0 ? "Novi normativ" : "Izmjena normativa",
+            parametri,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var rezultat = await dijalog.Result;
+        if (rezultat is null || rezultat.Canceled || rezultat.Data is not Normativ noviNormativ) return;
+
+        try
+        {
+            await Podaci.SnimiNormativAsync(noviNormativ);
+            Poruke.Add($"Normativ za „{noviNormativ.ArtikalNaziv}\" je snimljen.", Severity.Success);
+            await UcitajAsync();
+        }
+        catch (Exception ex)
+        {
+            Poruke.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ZatvoriAsync(Normativ n)
+    {
+        // Arhiviranje, ne brisanje — obračun utroška za prošle periode mora ostati tačan.
+        var potvrda = await Dijalozi.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Title = "Arhiviranje normativa",
+            MarkupMessage = new MarkupString(
+                $"Recept za <b>{n.ArtikalNaziv}</b> prestaje važiti od danas.<br/>Stari obračuni ostaju nepromijenjeni."),
+            YesText = "Arhiviraj",
+            CancelText = "Odustani"
+        });
+
+        if (potvrda != true) return;
+
+        try
+        {
+            await Podaci.ZatvoriNormativAsync(n.Id);
+            await UcitajAsync();
+        }
+        catch (Exception ex)
+        {
+            Poruke.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task UveziAsync()
+    {
+        try
+        {
+            _radi = true;
+            var broj = await Podaci.UveziNormativeAsync();
+            Poruke.Add(broj == 0
+                ? "Nema novih normativa za uvoz."
+                : $"Uvezeno {broj} normativa iz kase.", broj == 0 ? Severity.Info : Severity.Success);
+            await UcitajAsync();
+        }
+        catch (Exception ex)
+        {
+            Poruke.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _radi = false;
+        }
+    }
+
+    public void Dispose() => Stanje.Promjena -= NaPromjenu;
+}

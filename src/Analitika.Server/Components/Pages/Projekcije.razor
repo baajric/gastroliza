@@ -1,0 +1,183 @@
+@page "/projekcije"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+
+<PageTitle>Projekcije</PageTitle>
+
+<NaslovStranice Naslov="Projekcije potrošnje"
+                Opis="Koliko će sirovina trebati u narednom periodu, prema dosadašnjoj prodaji i sezoni." />
+
+@* Ovdje se ne koristi zajednički izbornik perioda — on gleda unazad, a ovdje se bira budućnost. *@
+<div class="filteri">
+    <Segment T="int" Stavke="Horizonti" Vrijednost="_dana" VrijednostChanged="DanaPromijenjeno"
+             Naziv="@(d => $"{d} dana")" Opis="Koliko dana unaprijed" />
+
+    <MudSpacer />
+
+    <span class="opis mono">
+        @CiljOd.ToString("dd.MM.yyyy.") – @CiljDo.ToString("dd.MM.yyyy.")
+    </span>
+</div>
+
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="@(_rezultat is null && !_ucitava && _greska is null)" />
+
+@if (_rezultat is { } r)
+{
+    <div style="@(_ucitava ? "opacity:.5" : "")">
+        @if (r.Upozorenje is not null)
+        {
+            <MudAlert Severity="@(r.SezonaIzmjerena ? Severity.Info : Severity.Warning)"
+                      Variant="Variant.Outlined" Class="mb-4">
+                @r.Upozorenje
+            </MudAlert>
+        }
+
+        <div class="plocice">
+            <Kartica Naslov="Sezonski množilac" Vrijednost="@r.SezonskiIndeks.ToString("N2")" Jedinica="×"
+                     Podnaslov="@SezonskiOpis(r.SezonskiIndeks)" />
+            <Kartica Naslov="Sirovina u projekciji" Vrijednost="@r.Sirovine.Count.ToString("N0")" />
+            <Kartica Naslov="Artikala sa receptom" Vrijednost="@r.Artikli.Count.ToString("N0")" />
+            <Kartica Naslov="Radnih dana historije" Vrijednost="@r.DanaHistorije.ToString("N0")"
+                     Podnaslov="@(r.SezonaIzmjerena ? "Sezona izmjerena" : "Sezona procijenjena")" />
+        </div>
+
+        <MudGrid>
+            <MudItem xs="12" md="7">
+                <div class="panel">
+                    <div class="panel-zaglavlje">
+                        <h2 class="displej naslov-panela">Potrebne sirovine</h2>
+                        <span class="opis">Raspon = mirnija ili jača sedmica</span>
+                    </div>
+
+                    <MudTable Items="r.Sirovine" Dense Hover Breakpoint="Breakpoint.Sm" Height="520px" FixedHeader>
+                        <HeaderContent>
+                            <MudTh>Sirovina</MudTh>
+                            <MudTh Style="text-align:right;">Očekivano</MudTh>
+                            <MudTh>JM</MudTh>
+                            <MudTh Style="text-align:right;">Raspon</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="s">
+                            <MudTd DataLabel="Sirovina">@s.Naziv</MudTd>
+                            <MudTd DataLabel="Očekivano" Class="brojka"><b>@s.Ocekivano.ToString("N2")</b></MudTd>
+                            <MudTd DataLabel="JM">@s.Jm</MudTd>
+                            <MudTd DataLabel="Raspon" Class="brojka">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @s.Donja.ToString("N2") – @s.Gornja.ToString("N2")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </div>
+            </MudItem>
+
+            <MudItem xs="12" md="5">
+                <div class="panel">
+                    <div class="panel-zaglavlje">
+                        <h2 class="displej naslov-panela">Očekivana prodaja</h2>
+                        <span class="opis">Samo artikli sa receptom</span>
+                    </div>
+
+                    <MudTable Items="r.Artikli" Dense Hover Breakpoint="Breakpoint.Sm" Height="520px" FixedHeader>
+                        <HeaderContent>
+                            <MudTh>Artikal</MudTh>
+                            <MudTh Style="text-align:right;">Komada</MudTh>
+                            <MudTh Style="text-align:right;">Raspon</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="a">
+                            <MudTd DataLabel="Artikal">@a.Naziv</MudTd>
+                            <MudTd DataLabel="Komada" Class="brojka"><b>@a.Ocekivano.ToString("N0")</b></MudTd>
+                            <MudTd DataLabel="Raspon" Class="brojka">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @a.Donja.ToString("N0") – @a.Gornja.ToString("N0")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        <MudExpansionPanels Class="mt-4" Elevation="0">
+            <MudExpansionPanel Text="Kako je ovo izračunato">
+                <MudText Typo="Typo.body2">
+                    Za svaki dan u budućem periodu uzima se <b>medijana prodaje tog dana u sedmici</b>
+                    iz zadnjih osam sedmica — medijana, a ne prosjek, da jedan praznik ili neradni dan
+                    ne pomjeri procjenu. Rezultat se množi <b>sezonskim indeksom</b>: prosječnom dnevnom
+                    prodajom ciljanog mjeseca u odnosu na tekući.
+                    <br /><br />
+                    Raspon je P25–P75 iz iste historije, pa pokazuje koliko se stvarnost obično kreće
+                    oko sredine. Model je namjerno jednostavan — sa ovoliko podataka složeniji modeli
+                    prilagode se šumu i djeluju preciznije nego što jesu.
+                </MudText>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<int> Horizonti = [7, 14, 30, 60];
+    private int _dana = 14;
+    private RezultatProjekcije? _rezultat;
+    private bool _ucitava;
+    private string? _greska;
+
+    private static DateOnly Danas => StanjeAplikacije.Danas;
+    private DateOnly CiljOd => Danas.AddDays(1);
+    private DateOnly CiljDo => Danas.AddDays(_dana);
+
+    protected override async Task OnInitializedAsync() => await UcitajAsync();
+
+    private async Task DanaPromijenjeno(int d)
+    {
+        if (d == _dana) return;
+        _dana = d;
+        await UcitajAsync();
+    }
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            StateHasChanged();
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        StateHasChanged();
+
+        try
+        {
+            // Osnovica je uvijek godina unazad, bez obzira na period izabran drugdje —
+            // projekcija bez historije nema smisla.
+            var historija = await Podaci.DnevnaProdajaAsync(Danas.AddYears(-1), Danas);
+            var normativi = await Podaci.NormativiAsync();
+            var artikli = await Podaci.SifarnikArtikalaAsync();
+
+            _rezultat = Projekcija.Izracunaj(
+                historija,
+                normativi,
+                artikli.ToDictionary(a => a.Sifra, a => a.Naziv),
+                Danas, CiljOd, CiljDo);
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string SezonskiOpis(decimal indeks) => indeks switch
+    {
+        > 1.10m => "Jači period od trenutnog",
+        < 0.90m => "Mirniji period od trenutnog",
+        _ => "Slično trenutnom periodu"
+    };
+}

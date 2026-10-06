@@ -1,0 +1,55 @@
+@*
+    Kartica sa grafom: zaglavlje odvojeno hairline crtom, sadržaj ispod.
+    Prekidač graf/tabela stoji uz naslov jer vrijednost mora biti dostupna
+    i bez čitanja grafa.
+*@
+
+<section class="panel">
+    <div class="panel-zaglavlje">
+        <div style="min-width:0;">
+            <h2 class="displej naslov-panela">@Naslov</h2>
+            @if (!string.IsNullOrEmpty(Podnaslov))
+            {
+                <div class="opis">@Podnaslov</div>
+            }
+        </div>
+        <MudSpacer />
+        @Alat
+        @if (Tabela is not null)
+        {
+            <div class="segment" role="group" aria-label="Prikaz">
+                <button type="button" class="segment-dugme" style="height:26px; padding:0 8px;"
+                        aria-pressed="@(!_tabela ? "true" : "false")" aria-label="Graf"
+                        @onclick="@(() => _tabela = false)">
+                    <MudIcon Icon="@Icons.Material.Outlined.ShowChart" Style="font-size:16px;" />
+                </button>
+                <button type="button" class="segment-dugme" style="height:26px; padding:0 8px;"
+                        aria-pressed="@(_tabela ? "true" : "false")" aria-label="Tabela"
+                        @onclick="@(() => _tabela = true)">
+                    <MudIcon Icon="@Icons.Material.Outlined.TableRows" Style="font-size:16px;" />
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_tabela && Tabela is not null)
+    {
+        <div class="tabela-okvir">@Tabela</div>
+    }
+    else
+    {
+        <div class="panel-tijelo">@Graf</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Naslov { get; set; } = "";
+    [Parameter] public string? Podnaslov { get; set; }
+    [Parameter] public RenderFragment? Graf { get; set; }
+    [Parameter] public RenderFragment? Tabela { get; set; }
+
+    /// <summary>Dodatna kontrola uz naslov, npr. segmentirani prekidač.</summary>
+    [Parameter] public RenderFragment? Alat { get; set; }
+
+    private bool _tabela;
+}

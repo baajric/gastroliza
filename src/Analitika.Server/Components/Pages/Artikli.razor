@@ -1,0 +1,202 @@
+@page "/artikli"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+
+<PageTitle>Artikli</PageTitle>
+
+<NaslovStranice Naslov="Artikli"
+                Opis="@($"{Stanje.Od:dd.MM.yyyy.} – {Stanje.Do:dd.MM.yyyy.}")" />
+
+<PeriodIzbornik />
+
+<div class="filteri">
+    <MudSelect T="string" Value="_grupa" ValueChanged="GrupaPromijenjena" Label="Grupa"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:180px;" Clearable>
+        <MudSelectItem T="string" Value="@(null)">Sve grupe</MudSelectItem>
+        <MudSelectItem T="string" Value="@("Pice")">Piće</MudSelectItem>
+        <MudSelectItem T="string" Value="@("Hrana")">Hrana</MudSelectItem>
+    </MudSelect>
+
+    <MudSelect T="int" Value="_vrh" ValueChanged="VrhPromijenjen" Label="Prikaži"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:140px;">
+        @foreach (var n in new[] { 10, 20, 50, 100 })
+        {
+            <MudSelectItem T="int" Value="@n">@n artikala</MudSelectItem>
+        }
+    </MudSelect>
+
+    <MudSelect T="Sortiranje" Value="_sort" ValueChanged="SortPromijenjen" Label="Sortiraj po"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:180px;">
+        <MudSelectItem T="Sortiranje" Value="Sortiranje.Kolicina">Količini</MudSelectItem>
+        <MudSelectItem T="Sortiranje" Value="Sortiranje.Promet">Prometu</MudSelectItem>
+    </MudSelect>
+</div>
+
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="@(_artikli.Count == 0)" />
+
+@if (_artikli.Count > 0)
+{
+    <div style="@(_ucitava ? "opacity:.5" : "")">
+        <MudGrid Spacing="4">
+            <MudItem xs="12" lg="5">
+                <GrafOkvir Naslov="@($"Najprodavanijih {Math.Min(15, Poredani.Count)}")"
+                           Podnaslov="@(_sort == Sortiranje.Kolicina ? "Po prodanoj količini" : "Po prometu")">
+                    <Graf>
+                        <RangLista T="RedArtikla" Stavke="Vrh15" Naziv="@(a => a.Naziv)"
+                                   Vrijednost="@(a => _sort == Sortiranje.Kolicina ? a.Kolicina : a.Promet)"
+                                   Oblik="@(v => _sort == Sortiranje.Kolicina ? v.ToString("N0") : v.ToString("N0") + " KM")"
+                                   NaslovNaziva="Artikal" NaslovVrijednosti="@NazivMjere" />
+                    </Graf>
+                    <Tabela>
+                        <MudSimpleTable Dense Striped Style="max-height:520px; overflow:auto;">
+                            <thead><tr><th>Artikal</th><th class="brojka">@NazivMjere</th></tr></thead>
+                            <tbody>
+                                @foreach (var a in Vrh15)
+                                {
+                                    <tr>
+                                        <td>@a.Naziv</td>
+                                        <td class="brojka">
+                                            @(_sort == Sortiranje.Kolicina ? a.Kolicina.ToString("N0") : a.Promet.ToString("N2"))
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </Tabela>
+                </GrafOkvir>
+            </MudItem>
+
+            <MudItem xs="12" lg="7">
+                <div class="panel">
+                    <div class="panel-zaglavlje">
+                        <div>
+                            <h2 class="displej naslov-panela">Rang lista</h2>
+                            <div class="opis">@Poredani.Count artikala · pomak naspram @Stanje.PrethodniOpis</div>
+                        </div>
+                    </div>
+                    <MudTable Items="Poredani" Dense Hover FixedHeader Height="520px" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh Style="width:48px;">#</MudTh>
+                            <MudTh>Artikal</MudTh>
+                            <MudTh Style="text-align:right;">Količina</MudTh>
+                            <MudTh Style="text-align:right;">Promet (KM)</MudTh>
+                            <MudTh Style="text-align:right; white-space:nowrap;">Cijena</MudTh>
+                            <MudTh Style="text-align:right;">
+                                <MudTooltip Text="@($"Koliko je mjesta artikal skočio ili pao u odnosu na {Stanje.PrethodniOpis}. „novo\" znači da tada nije bio među prikazanima.")">
+                                    Pomak
+                                </MudTooltip>
+                            </MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="a">
+                            <MudTd DataLabel="#">@(Poredani.IndexOf(a) + 1)</MudTd>
+                            <MudTd DataLabel="Artikal">@a.Naziv</MudTd>
+                            <MudTd DataLabel="Količina" Class="brojka">@a.Kolicina.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Promet (KM)" Class="brojka">@a.Promet.ToString("N2")</MudTd>
+                            <MudTd DataLabel="Pros. cijena" Class="brojka">@a.ProsjecnaCijena.ToString("N2")</MudTd>
+                            <MudTd DataLabel="@($"Pomak naspram {Stanje.PrethodniOpis}")" Class="brojka">
+                                @{
+                                    var pomak = Pomak(a);
+                                }
+                                @if (pomak is null)
+                                {
+                                    <span class="znacka neutralno">novo</span>
+                                }
+                                else if (pomak == 0)
+                                {
+                                    <span style="color:var(--tekst-4);">–</span>
+                                }
+                                else
+                                {
+                                    <span class="znacka @(pomak > 0 ? "rast" : "pad")">@(pomak > 0 ? "↑" : "↓")@Math.Abs(pomak.Value)</span>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </div>
+}
+
+@code {
+    private enum Sortiranje { Kolicina, Promet }
+
+    private List<RedArtikla> _artikli = [];
+    private List<RedArtikla> _prethodni = [];
+    private string? _grupa;
+    private int _vrh = 20;
+    private Sortiranje _sort = Sortiranje.Kolicina;
+
+    private bool _ucitava;
+    private string? _greska;
+
+    private string NazivMjere => _sort == Sortiranje.Kolicina ? "Količina" : "Promet (KM)";
+
+    private List<RedArtikla> Poredani => _sort == Sortiranje.Kolicina
+        ? [.. _artikli.OrderByDescending(a => a.Kolicina)]
+        : [.. _artikli.OrderByDescending(a => a.Promet)];
+
+    // Rang lista lijevo pokazuje samo vrh, najbolji gore; puna lista je u tabeli desno.
+    private List<RedArtikla> Vrh15 => [.. Poredani.Take(15)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Stanje.Promjena += NaPromjenu;
+        await UcitajAsync();
+    }
+
+    private void NaPromjenu() => _ = InvokeAsync(UcitajAsync);
+
+    private async Task GrupaPromijenjena(string? g) { _grupa = g; await UcitajAsync(); }
+    private async Task VrhPromijenjen(int v) { _vrh = v; await UcitajAsync(); }
+    // Sortiranje se radi nad već dohvaćenim podacima, ali graf i dalje treba gurnuti.
+    private void SortPromijenjen(Sortiranje s) => _sort = s;
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            _artikli = [];
+            StateHasChanged();
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        StateHasChanged();
+
+        try
+        {
+            _artikli = await Podaci.ArtikliAsync(_vrh, _grupa);
+            _prethodni = await Podaci.ArtikliPrethodniAsync(_vrh, _grupa);
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Koliko je mjesta artikal skočio ili pao u odnosu na prethodni period.</summary>
+    private int? Pomak(RedArtikla a)
+    {
+        var prije = _prethodni
+            .OrderByDescending(x => _sort == Sortiranje.Kolicina ? x.Kolicina : x.Promet)
+            .Select((x, i) => (x.Sifra, Rang: i))
+            .FirstOrDefault(x => x.Sifra == a.Sifra);
+
+        if (prije.Sifra == 0 && !_prethodni.Any(x => x.Sifra == a.Sifra)) return null;
+        return prije.Rang - Poredani.IndexOf(a);
+    }
+
+
+    public void Dispose() => Stanje.Promjena -= NaPromjenu;
+}

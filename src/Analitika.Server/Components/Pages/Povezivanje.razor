@@ -1,0 +1,167 @@
+@page "/povezivanje"
+@using Analitika.Server.Mostovi
+@using Analitika.Server.Nalozi
+@using Analitika.Server.Servisi
+@using Microsoft.Extensions.Caching.Memory
+@implements IDisposable
+@inject StanjeAplikacije Stanje
+@inject ServerBaza Baza
+@inject MostRegistar Registar
+@inject IMemoryCache Kes
+@inject NavigationManager Navigacija
+
+<PageTitle>Poveži kasu</PageTitle>
+
+<NaslovStranice Naslov="Poveži kasu"
+                Opis="Most je mali program na računaru sa bazom kase. Šalje samo zbirne rezultate, nikad cijelu bazu." />
+
+@if (Stanje.Restoran is not { } restoran)
+{
+    <div class="obavijest greska">Nalog nema restoran. Odjavi se i registruj restoran ponovo.</div>
+}
+else
+{
+    var naVezi = Registar.JeNaVezi(restoran.Id);
+    var od = Registar.NaVeziOd(restoran.Id);
+
+    <section class="panel mb-4">
+        <div class="panel-tijelo d-flex align-center gap-4 flex-wrap">
+            <span class="veza-znak @(naVezi ? "na-vezi" : "")">
+                <MudIcon Icon="@(naVezi ? Icons.Material.Outlined.Link : Icons.Material.Outlined.LinkOff)" />
+            </span>
+            <div style="min-width:0;">
+                <div class="displej naslov-panela" style="font-size:18px;">
+                    @(naVezi ? "Kasa je povezana" : _uparenost.Upareno is null ? "Kasa još nije povezana" : "Most trenutno nije na vezi")
+                </div>
+                <div class="opis">
+                    @if (naVezi)
+                    {
+                        <span>@restoran.Naziv · na vezi od @od?.ToLocalTime().ToString("dd.MM.yyyy. HH:mm")@(_uparenost.Racunar is { } r ? $" · računar {r}" : "")</span>
+                    }
+                    else if (_uparenost.Upareno is { } u)
+                    {
+                        <span>Uparen @u.ToLocalTime().ToString("dd.MM.yyyy.")@(_uparenost.Racunar is { } r ? $" sa računarom {r}" : "") — provjeri da je računar upaljen i ima internet.</span>
+                    }
+                    else
+                    {
+                        <span>Prati korake ispod. Kad se most javi, ova poruka se sama promijeni.</span>
+                    }
+                </div>
+            </div>
+            <MudSpacer />
+            @if (naVezi)
+            {
+                <MudButton Variant="Variant.Filled" Href="/">Otvori pregled</MudButton>
+            }
+        </div>
+    </section>
+
+    <MudGrid Spacing="4">
+        <MudItem xs="12" md="4">
+            <section class="panel korak">
+                <div class="panel-tijelo">
+                    <div class="korak-broj">1</div>
+                    <h2 class="displej naslov-panela">Preuzmi most</h2>
+                    <p class="opis">Paket već nosi jednokratni kod tvog restorana i adresu servera. Kod važi 30 minuta.</p>
+                    <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Outlined.Download" OnClick="Preuzmi" Class="mt-2">
+                        @(_kod is null ? "Preuzmi most" : "Preuzmi ponovo")
+                    </MudButton>
+                    @if (_kod is not null)
+                    {
+                        <div class="kod-okvir">
+                            <span class="opis">Kod, ako ga instalacija zatraži:</span>
+                            <span class="kod mono">@_kod</span>
+                            <span class="opis" style="font-size:12px;">važi do @_istice?.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            </section>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <section class="panel korak">
+                <div class="panel-tijelo">
+                    <div class="korak-broj">2</div>
+                    <h2 class="displej naslov-panela">Instaliraj na računaru kase</h2>
+                    <p class="opis">Na računaru gdje je SQL Server sa bazom kase (EtisRpos):</p>
+                    <ol class="koraci-lista">
+                        <li>Raspakuj <span class="mono">Gastroliza-Most.zip</span>.</li>
+                        <li>Dvoklik na <b>Instaliraj.cmd</b> i potvrdi administratorska prava.</li>
+                        <li>Sačekaj poruku „Most je instaliran".</li>
+                    </ol>
+                    <p class="opis" style="font-size:12px;">
+                        Instalaciju pokreni sa Windows nalogom kojim otvaraš SQL Server Management Studio — on smije dodijeliti mostu pravo čitanja.
+                    </p>
+                </div>
+            </section>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <section class="panel korak">
+                <div class="panel-tijelo">
+                    <div class="korak-broj">3</div>
+                    <h2 class="displej naslov-panela">Gotovo</h2>
+                    <p class="opis">
+                        Most radi kao Windows servis i sam se pali sa računarom. Ne treba otvarati portove na ruteru —
+                        most se javlja serveru, a ne obrnuto.
+                    </p>
+                    <div class="d-flex align-center gap-2 mt-3">
+                        @if (naVezi)
+                        {
+                            <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" Style="color:var(--rast);" />
+                            <span>Most se javio.</span>
+                        }
+                        else
+                        {
+                            <MudProgressCircular Indeterminate Size="Size.Small" Color="Color.Primary" />
+                            <span class="opis">Čekam da se most javi…</span>
+                        }
+                    </div>
+                </div>
+            </section>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> Prijava { get; set; } = default!;
+
+    private UparenostMosta _uparenost = new(null, null);
+    private string? _kod;
+    private DateTime? _istice;
+
+    protected override void OnInitialized()
+    {
+        Registar.Promjena += NaPromjenuVeze;
+        if (Stanje.Restoran is { } r) _uparenost = Baza.Uparenost(r.Id);
+    }
+
+    private void NaPromjenuVeze(Guid restoran, bool _)
+    {
+        if (restoran != Stanje.Restoran?.Id) return;
+        _uparenost = Baza.Uparenost(restoran);
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Novi kod se pravi pri svakom preuzimanju (stari time prestaje važiti), a link
+    /// za preuzimanje je jednokratni token vezan za ovaj nalog — kod nikad ne ide u URL.
+    /// </summary>
+    private async Task Preuzmi()
+    {
+        if (Stanje.Restoran is not { } restoran) return;
+        var korisnik = Analitika.Server.Nalozi.Prijava.IdKorisnika((await Prijava).User);
+        if (korisnik is null || !Baza.JeVlasnik(korisnik.Value, restoran.Id)) return;
+
+        var (kod, istice) = Baza.NoviKod(restoran.Id);
+        _kod = kod;
+        _istice = istice;
+
+        var token = Guid.NewGuid();
+        Kes.Set(token, new PaketZaPreuzimanje(restoran.Id, korisnik.Value, kod), ServerBaza.TrajanjeKoda);
+        Navigacija.NavigateTo($"/most/preuzmi/{token}", forceLoad: true);
+    }
+
+
+    public void Dispose() => Registar.Promjena -= NaPromjenuVeze;
+}

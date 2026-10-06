@@ -1,0 +1,21 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        @* Stranice traže prijavu; neprijavljen korisnik ide na prijavu i vraća se gdje je krenuo. *@
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <NaPrijavu />
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                Ova stranica ne postoji.
+            </MudAlert>
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">
+                Nazad na pregled
+            </MudButton>
+        </LayoutView>
+    </NotFound>
+</Router>

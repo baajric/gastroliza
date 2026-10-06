@@ -1,0 +1,19 @@
+bin/
+obj/
+.vs/
+*.user
+appsettings.Local.json
+publish/
+*.db
+*.db-shm
+*.db-wal
+App_Data/
+
+# build output and marketing renders
+dist/
+brag-output/
+
+# local AI tooling
+.claude/
+.agents/
+skills-lock.json

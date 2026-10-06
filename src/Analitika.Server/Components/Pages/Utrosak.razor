@@ -1,0 +1,189 @@
+@page "/utrosak"
+@using Analitika.Server.Servisi
+@using Analitika.Shared.Upiti
+@implements IDisposable
+@inject Podaci Podaci
+@inject StanjeAplikacije Stanje
+
+<PageTitle>Utrošak zaliha</PageTitle>
+
+<NaslovStranice Naslov="Utrošak zaliha"
+                Opis="@($"Prema receptima i stvarnoj prodaji · {Stanje.Od:dd.MM.yyyy.} – {Stanje.Do:dd.MM.yyyy.}")" />
+
+<PeriodIzbornik />
+
+<StanjeVeze Ucitava="_ucitava" Greska="@_greska" Prazno="@(_redovi.Count == 0 && !_ucitava && _greska is null)" />
+
+@if (_redovi.Count > 0)
+{
+    <div style="@(_ucitava ? "opacity:.5" : "")">
+        <div class="plocice">
+            <Kartica Naslov="Sirovina u upotrebi" Vrijednost="@_redovi.Count.ToString("N0")" />
+            <Kartica Naslov="Vrijednost utroška" Vrijednost="@_redovi.Sum(r => r.Vrijednost).ToString("N2")" Jedinica="KM"
+                     Podnaslov="@(_bezCijene > 0 ? $"{_bezCijene} sirovina bez nabavne cijene" : null)" />
+            <Kartica Naslov="Artikala sa receptom" Vrijednost="@_saReceptom.ToString("N0")" />
+            <Kartica Naslov="Pokrivenost prodaje" Vrijednost="@PokrivenostTekst" Jedinica="%"
+                     Podnaslov="Udio prodanih komada koji imaju recept" />
+        </div>
+
+        @if (_pokrivenost < 50)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+                Recepti pokrivaju @PokrivenostTekst% prodanih komada. Utrošak je tačan samo za te artikle —
+                unesi normative za ostale da slika bude potpuna.
+            </MudAlert>
+        }
+
+        <div class="panel">
+            <div class="panel-zaglavlje">
+                <h2 class="displej naslov-panela">Po sirovini</h2>
+                <span class="opis">Klikni na red za razlaganje po artiklima</span>
+            </div>
+            <MudTable Items="_redovi" Dense Hover Breakpoint="Breakpoint.Sm"
+                      OnRowClick="@((TableRowClickEventArgs<UtrosakRedak> e) => e.Item is null ? Task.CompletedTask : RazloziAsync(e.Item))"
+                      T="UtrosakRedak" Class="cursor-pointer">
+                <HeaderContent>
+                    <MudTh>Sirovina</MudTh>
+                    <MudTh Style="text-align:right;">Potrošeno</MudTh>
+                    <MudTh>JM</MudTh>
+                    <MudTh Style="text-align:right;">Vrijednost (KM)</MudTh>
+                    <MudTh Style="text-align:right;">Artikala</MudTh>
+                    <MudTh Style="text-align:right;">Dnevno</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="r">
+                    <MudTd DataLabel="Sirovina">@r.Naziv</MudTd>
+                    <MudTd DataLabel="Potrošeno" Class="brojka">@r.Kolicina.ToString("N3")</MudTd>
+                    <MudTd DataLabel="JM">@r.Jm</MudTd>
+                    <MudTd DataLabel="Vrijednost (KM)" Class="brojka">
+                        @if (r.Vrijednost == 0)
+                        {
+                            <MudTooltip Text="Sirovina nema nabavnu cijenu u šifarniku kase.">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            @r.Vrijednost.ToString("N2")
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Artikala" Class="brojka">@r.BrojArtikala</MudTd>
+                    <MudTd DataLabel="Dnevno" Class="brojka">@((r.Kolicina / Math.Max(1, Stanje.BrojDana)).ToString("N3"))</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </div>
+    </div>
+}
+
+@if (_razlozeno is not null)
+{
+    <div class="panel">
+        <div class="panel-zaglavlje">
+            <h2 class="displej naslov-panela">@_razlozenaSirovina</h2>
+            <span class="opis">po artiklima</span>
+            <MudSpacer />
+            <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small"
+                           OnClick="@(() => _razlozeno = null)" aria-label="Zatvori razlaganje" />
+        </div>
+
+        <MudSimpleTable Dense Striped>
+            <thead>
+                <tr><th>Artikal</th><th class="brojka">Prodano</th><th class="brojka">Potrošeno sirovine</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _razlozeno)
+                {
+                    <tr>
+                        <td>@a.Naziv</td>
+                        <td class="brojka">@a.Kolicina.ToString("N0")</td>
+                        <td class="brojka">@a.Utroseno.ToString("N3")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </div>
+}
+
+@code {
+    private List<UtrosakRedak> _redovi = [];
+    private List<UtrosakArtikla>? _razlozeno;
+    private string _razlozenaSirovina = "";
+
+    private int _saReceptom;
+    private int _bezCijene;
+    private decimal _pokrivenost;
+
+    private bool _ucitava;
+    private string? _greska;
+
+    // „0%" bi ostavilo dojam da nijedan artikal nema recept, a razlika između
+    // nijednog i vrlo malog udjela je bitna.
+    private string PokrivenostTekst => _pokrivenost switch
+    {
+        0 => "0",
+        < 0.1m => "<0,1",
+        < 10m => _pokrivenost.ToString("N1"),
+        _ => _pokrivenost.ToString("N0")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Stanje.Promjena += NaPromjenu;
+        await UcitajAsync();
+    }
+
+    private void NaPromjenu() => _ = InvokeAsync(UcitajAsync);
+
+    private async Task UcitajAsync()
+    {
+        if (!Podaci.NaVezi)
+        {
+            _greska = "Restoran trenutno nije na vezi.";
+            StateHasChanged();
+            return;
+        }
+
+        _ucitava = true;
+        _greska = null;
+        _razlozeno = null;
+        StateHasChanged();
+
+        try
+        {
+            _redovi = await Podaci.UtrosakAsync();
+            _bezCijene = _redovi.Count(r => r.Vrijednost == 0);
+
+            // Pokrivenost: koliki dio prodanih komada uopšte ima recept.
+            var normativi = await Podaci.NormativiAsync();
+            _saReceptom = normativi.Count;
+
+            var svi = await Podaci.ArtikliAsync(500, null);
+            var saReceptom = normativi.Select(n => n.ArtikalSifra).ToHashSet();
+            var ukupno = svi.Sum(a => a.Kolicina);
+            _pokrivenost = ukupno == 0 ? 0 : svi.Where(a => saReceptom.Contains(a.Sifra)).Sum(a => a.Kolicina) / ukupno * 100m;
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+        finally
+        {
+            _ucitava = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RazloziAsync(UtrosakRedak r)
+    {
+        try
+        {
+            _razlozenaSirovina = r.Naziv;
+            _razlozeno = await Podaci.UtrosakPoArtikluAsync(r.Barkod);
+        }
+        catch (Exception ex)
+        {
+            _greska = ex.Message;
+        }
+    }
+
+    public void Dispose() => Stanje.Promjena -= NaPromjenu;
+}

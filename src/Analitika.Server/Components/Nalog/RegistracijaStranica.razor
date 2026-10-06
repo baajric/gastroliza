@@ -1,0 +1,94 @@
+@page "/nalog/registracija"
+@layout NalogLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Analitika.Server.Nalozi
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject ServerBaza Baza
+@inject NavigationManager Navigacija
+
+<PageTitle>Registracija · Gastroliza</PageTitle>
+
+<section class="panel nalog-kartica">
+    <div class="panel-tijelo">
+        <h1 class="displej naslov-stranice">Registruj restoran</h1>
+        <p class="opis" style="margin:6px 0 24px;">Poslije registracije povezuješ kasu — traje par minuta.</p>
+
+        @if (_greska is not null)
+        {
+            <div class="obavijest greska" role="alert">@_greska</div>
+        }
+
+        <EditForm Model="Unos" FormName="registracija" OnValidSubmit="RegistrujAsync" method="post">
+            <DataAnnotationsValidator />
+
+            <label class="polje-oznaka" for="restoran">Ime restorana</label>
+            <InputText id="restoran" class="nalog-polje" @bind-Value="Unos.Restoran" autocomplete="organization" />
+            <ValidationMessage For="() => Unos.Restoran" class="nalog-greska" />
+
+            <label class="polje-oznaka" for="ime" style="margin-top:16px;">Tvoje ime</label>
+            <InputText id="ime" class="nalog-polje" @bind-Value="Unos.Ime" autocomplete="name" />
+            <ValidationMessage For="() => Unos.Ime" class="nalog-greska" />
+
+            <label class="polje-oznaka" for="email" style="margin-top:16px;">Email</label>
+            <InputText id="email" class="nalog-polje" @bind-Value="Unos.Email" autocomplete="username" type="email" />
+            <ValidationMessage For="() => Unos.Email" class="nalog-greska" />
+
+            <label class="polje-oznaka" for="lozinka" style="margin-top:16px;">Lozinka</label>
+            <InputText id="lozinka" class="nalog-polje" @bind-Value="Unos.Lozinka" autocomplete="new-password" type="password" />
+            <ValidationMessage For="() => Unos.Lozinka" class="nalog-greska" />
+            <span class="opis" style="font-size:12px;">Najmanje 10 znakova.</span>
+
+            <button type="submit" class="nalog-dugme">Registruj i poveži kasu</button>
+        </EditForm>
+
+        <p class="opis" style="margin-top:20px; text-align:center;">
+            Već imaš nalog? <a href="nalog/prijava">Prijavi se</a>
+        </p>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "registracija")]
+    private UnosRegistracije Unos { get; set; } = new();
+
+    private string? _greska;
+
+    private async Task RegistrujAsync()
+    {
+        var ishod = Baza.Registruj(Unos.Email.Trim(), Unos.Ime.Trim(), Unos.Lozinka, Unos.Restoran.Trim());
+        if (ishod is not { } r)
+        {
+            _greska = "Nalog sa tim emailom već postoji. Prijavi se.";
+            return;
+        }
+
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+            Prijava.Napravi(r.Korisnik, [r.Restoran]),
+            new AuthenticationProperties { IsPersistent = true });
+
+        Navigacija.NavigateTo("/povezivanje", forceLoad: true);
+    }
+
+    private sealed class UnosRegistracije
+    {
+        [Required(ErrorMessage = "Upiši ime restorana.")]
+        [StringLength(60, ErrorMessage = "Najviše 60 znakova.")]
+        public string Restoran { get; set; } = "";
+
+        [Required(ErrorMessage = "Upiši svoje ime.")]
+        [StringLength(60, ErrorMessage = "Najviše 60 znakova.")]
+        public string Ime { get; set; } = "";
+
+        [Required(ErrorMessage = "Upiši email.")]
+        [EmailAddress(ErrorMessage = "Email nije ispravan.")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Upiši lozinku.")]
+        [StringLength(200, MinimumLength = 10, ErrorMessage = "Lozinka mora imati najmanje 10 znakova.")]
+        public string Lozinka { get; set; } = "";
+    }
+}

@@ -1,0 +1,58 @@
+@typeparam T
+
+@*
+    Rang lista sa trakom iza reda (Vercel „Top pages"). Dužina trake je vrijednost
+    naspram prvog u listi, pa se razlike vide bez ose; tačan broj stoji desno.
+    Zamjenjuje vodoravni stupčasti graf — isti podatak, upola manje šuma.
+*@
+
+@if (Stavke.Count == 0)
+{
+    <div class="opis">Nema podataka za ovaj period.</div>
+}
+else
+{
+    <div class="lista">
+        <div class="lista-zaglavlje">
+            <span>@NaslovNaziva</span>
+            <span>@NaslovVrijednosti</span>
+        </div>
+        @foreach (var (s, i) in Stavke.Select((s, i) => (s, i)))
+        {
+            var v = Vrijednost(s);
+            <div class="lista-red" title="@($"{Naziv(s)}: {Oblik(v)}")">
+                <span class="lista-traka" style="@($"width:{Udio(v).ToString("0.##", Inv)}%;")"></span>
+                @if (Rang)
+                {
+                    <span class="lista-rang">@(i + 1)</span>
+                }
+                <span class="lista-naziv">@Naziv(s)</span>
+                @if (Dodatak is not null)
+                {
+                    @Dodatak(s)
+                }
+                <span class="lista-vrijednost">@Oblik(v)</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<T> Stavke { get; set; } = [];
+    [Parameter, EditorRequired] public Func<T, string> Naziv { get; set; } = _ => "";
+    [Parameter, EditorRequired] public Func<T, decimal> Vrijednost { get; set; } = _ => 0;
+    [Parameter] public Func<decimal, string> Oblik { get; set; } = v => v.ToString("N0");
+    [Parameter] public string NaslovNaziva { get; set; } = "Naziv";
+    [Parameter] public string NaslovVrijednosti { get; set; } = "Vrijednost";
+    [Parameter] public bool Rang { get; set; } = true;
+
+    /// <summary>Sitan dodatak prije vrijednosti, npr. pomak u rangu.</summary>
+    [Parameter] public RenderFragment<T>? Dodatak { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Inv =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    private decimal Najvece => Stavke.Count == 0 ? 0 : Stavke.Max(Vrijednost);
+
+    private decimal Udio(decimal v) => Najvece <= 0 ? 0 : Math.Clamp(v / Najvece * 100m, 0m, 100m);
+}
